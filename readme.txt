@@ -43,12 +43,21 @@ These steps were validated on Linux x86_64 with the software X11 renderer.
 
 	 git clone <your-fork-url>
 	 cd Quake-2
+
+	 Build debug:
 	 make -f linux/Makefile.i386 build_debug
+
+	 Build release:
+	 make -f linux/Makefile.i386 build_release
 
 
 3) Configure renderer library path (required by this codebase)
 
+	 For debug build:
 	 sudo sh -c 'echo /absolute/path/to/Quake-2/debugi386 > /etc/quake2.conf'
+
+	 For release build:
+	 sudo sh -c 'echo /absolute/path/to/Quake-2/releasei386 > /etc/quake2.conf'
 
 
 4) Provide game data in baseq2
@@ -89,14 +98,28 @@ These steps were validated on Linux x86_64 with the software X11 renderer.
 
 5) Copy the game module next to the game data
 
+	 If you built debug:
 	 cp -f debugi386/gamei386.so baseq2/gamei386.so
+
+	 If you built release:
+	 cp -f releasei386/gamei386.so baseq2/gamei386.so
 
 	 Note: do this again after rebuilding if game code changed.
 
 
 6) Run (larger window, software renderer, no legacy OSS sound)
 
+	 Debug binary:
 	 ./debugi386/quake2 \
+		 +set vid_ref softx \
+		 +set sw_mode 6 \
+		 +set vid_fullscreen 0 \
+		 +set s_initsound 0 \
+		 +skill 1 \
+		 +map demo1
+
+	 Release binary:
+	 ./releasei386/quake2 \
 		 +set vid_ref softx \
 		 +set sw_mode 6 \
 		 +set vid_fullscreen 0 \
@@ -113,9 +136,15 @@ These steps were validated on Linux x86_64 with the software X11 renderer.
 
 7) If you rebuild renderer/game, run this sequence
 
+	 Debug sequence:
 	 make -f linux/Makefile.i386 build_debug
 	 cp -f debugi386/gamei386.so baseq2/gamei386.so
 	 ./debugi386/quake2 +set vid_ref softx +set sw_mode 6 +set vid_fullscreen 0 +set s_initsound 0 +skill 1 +map demo1
+
+	 Release sequence:
+	 make -f linux/Makefile.i386 build_release
+	 cp -f releasei386/gamei386.so baseq2/gamei386.so
+	 ./releasei386/quake2 +set vid_ref softx +set sw_mode 6 +set vid_fullscreen 0 +set s_initsound 0 +skill 1 +map demo1
 
 
 Troubleshooting
