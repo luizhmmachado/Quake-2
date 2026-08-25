@@ -41,7 +41,7 @@ These steps were validated on Linux x86_64 with the software X11 renderer.
 
 2) Clone and build
 
-	 git clone <your-fork-url>
+	 git clone git@github.com:luizhmmachado/Quake-2.git
 	 cd Quake-2
 
 	 Build debug:
