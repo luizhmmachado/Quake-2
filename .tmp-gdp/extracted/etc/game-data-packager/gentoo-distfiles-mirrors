@@ -1,6 +1,0 @@
-# Mirrors of the Gentoo Portage "distfiles" hierarchy.
-# Games that have a Gentoo ebuild are mirrored here.
-
-https://www.mirrorservice.org/sites/distfiles.gentoo.org/distfiles/
-https://ftp.belnet.be/pub/rsync.gentoo.org/gentoo/distfiles/
-http://gentoo.mirrors.ovh.net/gentoo-distfiles/distfiles/

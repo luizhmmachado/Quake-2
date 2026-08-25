@@ -1,7 +1,0 @@
-#! /bin/sh
-set -e
-
-if [ "$1" = rtupdate ]; then
-	py3clean -p game-data-packager /usr/share/games/game-data-packager
-	py3compile -p game-data-packager  /usr/share/games/game-data-packager
-fi
