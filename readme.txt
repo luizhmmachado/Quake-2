@@ -43,6 +43,7 @@ These steps were validated on Linux x86_64 with the software X11 renderer.
 
 	 git clone git@github.com:luizhmmachado/Quake-2.git
 	 cd Quake-2
+	 git checkout dev
 
 	 Build debug:
 	 make -f linux/Makefile.i386 build_debug
