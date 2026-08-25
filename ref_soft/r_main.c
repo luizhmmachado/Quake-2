@@ -1028,7 +1028,15 @@ void R_RenderFrame (refdef_t *fd)
 	if (r_dspeeds->value)
 		dp_time2 = Sys_Milliseconds ();
 
+	/*
+	 * Legacy software alpha surface path is unstable on modern 64-bit builds.
+	 * Skip translucent world pass to keep gameplay stable.
+	 */
+#if defined(__x86_64__)
+	r_alpha_surfaces = NULL;
+#else
 	R_DrawAlphaSurfaces();
+#endif
 
 	R_SetLightLevel ();
 

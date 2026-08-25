@@ -1,0 +1,9 @@
+#! /usr/bin/python3
+# encoding=utf-8
+# Copyright 2022 Simon McVittie
+# SPDX-License-Identifier: GPL-2.0-or-later
+
+import sys
+sys.path[:0] = ['/usr/share/games/game-data-packager']
+import game_data_packager.command_line      # noqa: E402
+game_data_packager.command_line.run_command_line()

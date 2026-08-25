@@ -1,0 +1,4 @@
+# verbatim quote
+game-data-packager binary: spelling-error-in-copyright ment meant
+# functionally necessary, to build it into packages we produce
+game-data-packager binary: package-contains-documentation-outside-usr-share-doc [usr/share/games/game-data-packager/copyright]

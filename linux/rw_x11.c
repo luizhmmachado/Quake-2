@@ -16,6 +16,7 @@
 #include <ctype.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#include <sys/mman.h>
 #include <unistd.h>
 #include <signal.h>
 #include <stdlib.h>
@@ -28,7 +29,22 @@
 #include <X11/Xutil.h>
 #include <X11/Xatom.h>
 #include <X11/keysym.h>
+
+#if defined(__has_include)
+#if __has_include(<X11/extensions/XShm.h>)
 #include <X11/extensions/XShm.h>
+#define HAS_XSHM 1
+#endif
+#endif
+
+#ifndef HAS_XSHM
+#define HAS_XSHM 0
+typedef struct {
+	int shmid;
+	char *shmaddr;
+	int readOnly;
+} XShmSegmentInfo;
+#endif
 
 #include "../ref_soft/r_local.h"
 #include "../client/keys.h"
@@ -55,8 +71,10 @@ static int				x_shmeventtype;
 static qboolean			oktodraw = false;
 static qboolean			X11_active = false;
 
+#if HAS_XSHM
 int XShmQueryExtension(Display *);
 int XShmGetEventBase(Display *);
+#endif
 
 int current_framebuffer;
 static XImage			*x_framebuffer[2] = { 0, 0 };
@@ -75,6 +93,10 @@ int config_notify_width;
 int config_notify_height;
 						      
 typedef unsigned short PIXEL;
+typedef unsigned int PIXEL32;
+
+static byte *x_backbuffer;
+static int x_backbuffer_size;
 
 // Console variables that we need to access from this module
 
@@ -239,6 +261,7 @@ void RW_IN_Activate(void)
 /*****************************************************************************/
 
 static PIXEL st2d_8to16table[256];
+static PIXEL32 st2d_8to32table[256];
 static int shiftmask_fl=0;
 static long r_shift,g_shift,b_shift;
 static unsigned long r_mask,g_mask,b_mask;
@@ -280,6 +303,84 @@ PIXEL xlib_rgb(int r,int g,int b)
     } else p|=(b&b_mask);
 
     return p;
+}
+
+unsigned long xlib_pixel(int r,int g,int b)
+{
+	unsigned long p;
+	if(shiftmask_fl==0) shiftmask_init();
+	p=0;
+
+	if(r_shift>0) {
+		p=(r<<(r_shift))&r_mask;
+	} else if(r_shift<0) {
+		p=(r>>(-r_shift))&r_mask;
+	} else p|=(r&r_mask);
+
+	if(g_shift>0) {
+		p|=(g<<(g_shift))&g_mask;
+	} else if(g_shift<0) {
+		p|=(g>>(-g_shift))&g_mask;
+	} else p|=(g&g_mask);
+
+	if(b_shift>0) {
+		p|=(b<<(b_shift))&b_mask;
+	} else if(b_shift<0) {
+		p|=(b>>(-b_shift))&b_mask;
+	} else p|=(b&b_mask);
+
+	return p;
+}
+
+static void blit_8_to_ximage(XImage *img)
+{
+	int x, y;
+	byte *srcrow;
+
+	if (!x_backbuffer || !img)
+		return;
+
+	if (img->bits_per_pixel == 8)
+	{
+		for (y = 0; y < vid.height; y++)
+		{
+			memcpy(img->data + y * img->bytes_per_line,
+				x_backbuffer + y * vid.width,
+				vid.width);
+		}
+		return;
+	}
+
+	if (img->bits_per_pixel == 16)
+	{
+		for (y = 0; y < vid.height; y++)
+		{
+			PIXEL *dst = (PIXEL *)(img->data + y * img->bytes_per_line);
+			srcrow = x_backbuffer + y * vid.width;
+			for (x = 0; x < vid.width; x++)
+				dst[x] = st2d_8to16table[srcrow[x]];
+		}
+		return;
+	}
+
+	if (img->bits_per_pixel == 32)
+	{
+		for (y = 0; y < vid.height; y++)
+		{
+			PIXEL32 *dst = (PIXEL32 *)(img->data + y * img->bytes_per_line);
+			srcrow = x_backbuffer + y * vid.width;
+			for (x = 0; x < vid.width; x++)
+				dst[x] = st2d_8to32table[srcrow[x]];
+		}
+		return;
+	}
+
+	for (y = 0; y < vid.height; y++)
+	{
+		srcrow = x_backbuffer + y * vid.width;
+		for (x = 0; x < vid.width; x++)
+			XPutPixel(img, x, y, st2d_8to32table[srcrow[x]]);
+	}
 }
 
 void st2_fixup( XImage *framebuf, int x, int y, int width, int height)
@@ -361,11 +462,30 @@ void ResetFrameBuffer(void)
 	if (!x_framebuffer[0])
 		Sys_Error("VID: XCreateImage failed\n");
 
-	vid.buffer = (byte*) (x_framebuffer[0]);
+	if (x_backbuffer)
+	{
+		free(x_backbuffer);
+		x_backbuffer = NULL;
+	}
+
+	x_backbuffer_size = vid.width * vid.height;
+	x_backbuffer = malloc(x_backbuffer_size);
+	if (!x_backbuffer)
+		Sys_Error("VID: could not allocate software backbuffer\n");
+	memset(x_backbuffer, 0, x_backbuffer_size);
+
+	vid.rowbytes = vid.width;
+	vid.buffer = x_backbuffer;
 }
 
 void ResetSharedFrameBuffers(void)
 {
+
+#if !HAS_XSHM
+	doShm = false;
+	ResetFrameBuffer();
+	return;
+#else
 	int size;
 	int key;
 	int minsize = getpagesize();
@@ -422,6 +542,22 @@ void ResetSharedFrameBuffers(void)
 		shmctl(x_shminfo[frm].shmid, IPC_RMID, 0);
 	}
 
+	if (x_backbuffer)
+	{
+		free(x_backbuffer);
+		x_backbuffer = NULL;
+	}
+
+	x_backbuffer_size = vid.width * vid.height;
+	x_backbuffer = malloc(x_backbuffer_size);
+	if (!x_backbuffer)
+		Sys_Error("VID: could not allocate software backbuffer\n");
+	memset(x_backbuffer, 0, x_backbuffer_size);
+
+	vid.rowbytes = vid.width;
+	vid.buffer = x_backbuffer;
+
+#endif
 }
 
 // ========================================================================
@@ -837,6 +973,7 @@ static qboolean SWimp_InitGraphics( qboolean fullscreen )
 // now safe to draw
 
 // even if MITSHM is available, make sure it's a local connection
+#if HAS_XSHM
 	if (XShmQueryExtension(x_disp))
 	{
 		char *displayname;
@@ -851,18 +988,23 @@ static qboolean SWimp_InitGraphics( qboolean fullscreen )
 				doShm = false;
 		}
 	}
+#else
+	doShm = false;
+#endif
 
 	if (doShm)
 	{
+	#if HAS_XSHM
 		x_shmeventtype = XShmGetEventBase(x_disp) + ShmCompletion;
 		ResetSharedFrameBuffers();
+	#endif
 	}
 	else
 		ResetFrameBuffer();
 
 	current_framebuffer = 0;
-	vid.rowbytes = x_framebuffer[0]->bytes_per_line;
-	vid.buffer = x_framebuffer[0]->data;
+	vid.rowbytes = vid.width;
+	vid.buffer = x_backbuffer;
 
 //	XSynchronize(x_disp, False);
 
@@ -903,10 +1045,8 @@ void SWimp_EndFrame (void)
 
 	if (doShm)
 	{
-
-		if (x_visinfo->depth != 8)
-			st2_fixup( x_framebuffer[current_framebuffer], 
-				0, 0, vid.width, vid.height);	
+	#if HAS_XSHM
+		blit_8_to_ximage(x_framebuffer[current_framebuffer]);
 		if (!XShmPutImage(x_disp, x_win, x_gc,
 			x_framebuffer[current_framebuffer], 0, 0,
 			0, 0, vid.width, vid.height, True))
@@ -915,14 +1055,12 @@ void SWimp_EndFrame (void)
 		while (!oktodraw) 
 			GetEvent();
 		current_framebuffer = !current_framebuffer;
-		vid.buffer = x_framebuffer[current_framebuffer]->data;
 		XSync(x_disp, False);
+	#endif
 	}
 	else
 	{
-		if (x_visinfo->depth != 8)
-			st2_fixup( x_framebuffer[current_framebuffer], 
-				0, 0, vid.width, vid.height);
+		blit_8_to_ximage(x_framebuffer[0]);
 		XPutImage(x_disp, x_win, x_gc, x_framebuffer[0],
 			0, 0, 0, 0, vid.width, vid.height);
 		XSync(x_disp, False);
@@ -975,8 +1113,12 @@ void SWimp_SetPalette( const unsigned char *palette )
         palette = ( const unsigned char * ) sw_state.currentpalette;
  
 	for(i=0;i<256;i++)
+	{
 		st2d_8to16table[i]= xlib_rgb(palette[i*4],
 			palette[i*4+1],palette[i*4+2]);
+		st2d_8to32table[i]= (PIXEL32)xlib_pixel(palette[i*4],
+			palette[i*4+1],palette[i*4+2]);
+	}
 
 	if (x_visinfo->class == PseudoColor && x_visinfo->depth == 8)
 	{
@@ -1006,6 +1148,7 @@ void SWimp_Shutdown( void )
 		return;
 
 	if (doShm) {
+	#if HAS_XSHM
 		for (i = 0; i < 2; i++)
 			if (x_framebuffer[i]) {
 				XShmDetach(x_disp, &x_shminfo[i]);
@@ -1013,10 +1156,18 @@ void SWimp_Shutdown( void )
 				shmdt(x_shminfo[i].shmaddr);
 				x_framebuffer[i] = NULL;
 			}
+	#endif
 	} else if (x_framebuffer[0]) {
 		free(x_framebuffer[0]->data);
 		free(x_framebuffer[0]);
 		x_framebuffer[0] = NULL;
+	}
+
+	if (x_backbuffer)
+	{
+		free(x_backbuffer);
+		x_backbuffer = NULL;
+		x_backbuffer_size = 0;
 	}
 
 	XDestroyWindow(	x_disp, x_win );

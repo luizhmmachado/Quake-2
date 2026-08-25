@@ -1,0 +1,68 @@
+Debian Doom mini-policy, version 2024-01-31
+===========================================
+
+Section
+-------
+
+All Doom-related packages should be in the /games subsection, e.g. main/games.
+
+
+Terminology
+-----------
+
+IWAD: a WAD file which contains all of the data required to play Doom.
+
+PWAD: a "patch" .wad, containing replacement resources.
+
+engine: a Doom Engine is the executable-half of a doom game.
+
+Boom: A popular doom engine which provided many features not present
+      in the original Doom. Many modern engines support the boom feature set,
+      but not all do.
+
+
+IWADs
+-----
+
+Doom engines and tools that require an IWAD know to look in
+/usr/share/games/doom.
+
+
+Configuration files
+-------------------
+
+Doom engines supports different configuration options, and their savegames
+aren't necessarily compatible, so they should not share a dot-directory.
+Use a different dot-directory per engine.
+
+
+Virtual packages
+----------------
+
+doom-engine is any Doom engine compatible with the vanilla featureset,
+that can be run with "-iwad FILE" and understands the "-file PWAD" argument.
+
+boom-engine is any Boom-compatible engine, that can be run with "-iwad FILE"
+and understands the "-file PWAD" argument.
+
+doom-wad is any Doom IWAD compatible with the vanilla featureset.
+
+
+Alternatives
+------------
+
+Packages providing a Doom engine must implement the alternative for
+/usr/games/doom at priority 50.
+
+Packages providing a Boom-compatible engine must additionally implement
+the alternative for /usr/games/boom at priority 50.
+
+
+Changes
+-------
+
+* version 2024-01-31:
+  - don't bother registering IWADs alternatives anymore,
+    freedoom transitioned away from alternatives in version 0.6.4-4
+  - drop the boom-wad concept. There aren't any boom-wads in the archive
+    anymore. Freedoom went Vanilla compatible with the 0.12 release in 2019.

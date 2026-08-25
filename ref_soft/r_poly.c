@@ -586,6 +586,7 @@ int R_ClipPolyFace (int nump, clipplane_t *pclipplane)
 void R_PolygonDrawSpans(espan_t *pspan, qboolean iswater )
 {
 	int			count;
+	int			u;
 	fixed16_t	snext, tnext;
 	float		sdivz, tdivz, zi, z, du, dv, spancountminus1;
 	float		sdivzspanletstepu, tdivzspanletstepu, zispanletstepu;
@@ -607,18 +608,34 @@ void R_PolygonDrawSpans(espan_t *pspan, qboolean iswater )
 
 	do
 	{
-		s_spanletvars.pdest   = (byte *)d_viewbuffer + ( d_scantable[pspan->v] /*r_screenwidth * pspan->v*/) + pspan->u;
-		s_spanletvars.pz      = d_pzbuffer + (d_zwidth * pspan->v) + pspan->u;
-		s_spanletvars.u       = pspan->u;
-		s_spanletvars.v       = pspan->v;
+		if (pspan->v < 0 || pspan->v >= vid.height)
+			goto NextSpan;
 
+		u = pspan->u;
 		count = pspan->count;
+
+		if (u < 0)
+		{
+			count += u;
+			u = 0;
+		}
+
+		if (u >= vid.width || count <= 0)
+			goto NextSpan;
+
+		if (u + count > vid.width)
+			count = vid.width - u;
+
+		s_spanletvars.pdest   = (byte *)d_viewbuffer + d_scantable[pspan->v] + u;
+		s_spanletvars.pz      = d_pzbuffer + (d_zwidth * pspan->v) + u;
+		s_spanletvars.u       = u;
+		s_spanletvars.v       = pspan->v;
 
 		if (count <= 0)
 			goto NextSpan;
 
 	// calculate the initial s/z, t/z, 1/z, s, and t and clamp
-		du = (float)pspan->u;
+		du = (float)u;
 		dv = (float)pspan->v;
 
 		sdivz = d_sdivzorigin + dv*d_sdivzstepv + du*d_sdivzstepu;

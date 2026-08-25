@@ -1,0 +1,61 @@
+# Copyright 2015-2017 Alexandre Detiste
+# Copyright 2016 Simon McVittie
+# SPDX-License-Identifier: GPL-2.0-only
+
+_game_data_packager()
+{
+    local pkgdatadir
+    # edited by Makefile
+    pkgdatadir=/usr/share/games/game-data-packager
+
+    [ -e "$pkgdatadir" ] || return
+
+    # FIXME: currently only works 100% correctly when
+    #        GAME is the first argument
+
+    local cur prev
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+    if [ "${cur:0:1}" == "-" ]
+    then
+      local longopts
+      longopts='--compress --destination --help --install --no-compress --no-download --no-search --package --save-downloads --install-method --gain-root-command --target-format --target-distro'
+      COMPREPLY=( $( compgen -W "$longopts" -- $cur ) )
+    elif [ "$prev" == '--install-method' ]
+    then
+      COMPREPLY=( $( compgen -W "dpkg apt gdebi gdebi-gtk gdebi-kde" -- $cur ) )
+    elif [ "$prev" == '--gain-root-command' ]
+    then
+      COMPREPLY=( $( compgen -W "su sudo pkexec" -- $cur ) )
+    elif [ "$prev" == '--target-format' ]
+    then
+      COMPREPLY=( $( compgen -W "arch deb rpm" -- $cur ) )
+    elif [ "$prev" == '--package' ]
+    then
+      [ -e "$pkgdatadir"/bash_completion ] || return
+      local line packages
+      while read line
+      do
+          if [ "${COMP_WORDS[1]}" == "$line" ]
+          then
+              read packages
+              break
+          fi
+      done < "$pkgdatadir"/bash_completion
+      COMPREPLY=( $( compgen -W "$packages" -- $cur ) )
+    elif [ $COMP_CWORD -eq 1 ]
+    then
+      local line supported
+      while read line
+      do
+          supported="$supported $line"
+          read
+      done < "$pkgdatadir"/bash_completion
+      COMPREPLY=( $( compgen -W "make-template gog steam $supported" -- $cur ) )
+    else
+      COMPREPLY=()
+    fi
+}
+
+complete -o default -F _game_data_packager game-data-packager

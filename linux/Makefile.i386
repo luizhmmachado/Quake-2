@@ -12,7 +12,7 @@ else
 ARCH=i386
 endif
 
-MOUNT_DIR=/grog/NewWork/Quake2/code
+MOUNT_DIR?=$(CURDIR)
 
 BUILD_DEBUG_DIR=debug$(ARCH)
 BUILD_RELEASE_DIR=release$(ARCH)
@@ -30,18 +30,17 @@ CC=gcc
 BASE_CFLAGS=-Dstricmp=strcasecmp
 
 ifeq ($(ARCH),axp)
-RELEASE_CFLAGS=$(BASE_CFLAGS) -ffast-math -funroll-loops \
-	-fomit-frame-pointer -fexpensive-optimizations
+RELEASE_CFLAGS=$(BASE_CFLAGS) -O2 -ffast-math -funroll-loops \
+	-fomit-frame-pointer
 else
-RELEASE_CFLAGS=$(BASE_CFLAGS) -m486 -O6 -ffast-math -funroll-loops \
-	-fomit-frame-pointer -fexpensive-optimizations -malign-loops=2 \
-	-malign-jumps=2 -malign-functions=2
+RELEASE_CFLAGS=$(BASE_CFLAGS) -O2 -ffast-math -funroll-loops \
+	-fomit-frame-pointer
 endif
 
 DEBUG_CFLAGS=$(BASE_CFLAGS) -g
 LDFLAGS=-ldl -lm
 SVGALDFLAGS=-lvga
-XLDFLAGS=-L/usr/X11R6/lib -lX11 -lXext
+XLDFLAGS=-lX11
 XCFLAGS=
 
 GLLDFLAGS=-L/usr/local/glide/lib -L/usr/X11/lib -L/usr/local/lib \
@@ -63,40 +62,29 @@ DO_SHLIB_AS=$(CC) $(CFLAGS) $(SHLIBCFLAGS) -DELF -x assembler-with-cpp -o $@ -c 
 # SETUP AND BUILD
 #############################################################################
 
-ifeq ($(ARCH),axp)
 TARGETS=$(BUILDDIR)/quake2 \
 	$(BUILDDIR)/game$(ARCH).$(SHLIBEXT) \
-	$(BUILDDIR)/ctf/game$(ARCH).$(SHLIBEXT) \
-	$(BUILDDIR)/xatrix/game$(ARCH).$(SHLIBEXT)
-else
-TARGETS=$(BUILDDIR)/quake2 \
-	$(BUILDDIR)/game$(ARCH).$(SHLIBEXT) \
-	$(BUILDDIR)/ref_soft.$(SHLIBEXT) \
-	$(BUILDDIR)/ref_softx.$(SHLIBEXT) \
-	$(BUILDDIR)/ref_gl.$(SHLIBEXT) \
-	$(BUILDDIR)/ctf/game$(ARCH).$(SHLIBEXT) \
-	$(BUILDDIR)/xatrix/game$(ARCH).$(SHLIBEXT)
-endif
+	$(BUILDDIR)/ref_softx.$(SHLIBEXT)
 
 build_debug:
-	@-mkdir $(BUILD_DEBUG_DIR) \
+	@mkdir -p $(BUILD_DEBUG_DIR) \
 		$(BUILD_DEBUG_DIR)/client \
 		$(BUILD_DEBUG_DIR)/ref_soft \
 		$(BUILD_DEBUG_DIR)/ref_gl \
 		$(BUILD_DEBUG_DIR)/game \
 		$(BUILD_DEBUG_DIR)/ctf \
 		$(BUILD_DEBUG_DIR)/xatrix
-	$(MAKE) targets BUILDDIR=$(BUILD_DEBUG_DIR) CFLAGS="$(DEBUG_CFLAGS)"
+	$(MAKE) -f $(lastword $(MAKEFILE_LIST)) targets BUILDDIR=$(BUILD_DEBUG_DIR) CFLAGS="$(DEBUG_CFLAGS)" MOUNT_DIR="$(MOUNT_DIR)"
 
 build_release:
-	@-mkdir $(BUILD_RELEASE_DIR) \
+	@mkdir -p $(BUILD_RELEASE_DIR) \
 		$(BUILD_RELEASE_DIR)/client \
 		$(BUILD_RELEASE_DIR)/ref_soft \
 		$(BUILD_RELEASE_DIR)/ref_gl \
 		$(BUILD_RELEASE_DIR)/game \
 		$(BUILD_RELEASE_DIR)/ctf \
 		$(BUILD_RELEASE_DIR)/xatrix
-	$(MAKE) targets BUILDDIR=$(BUILD_RELEASE_DIR) CFLAGS="$(RELEASE_CFLAGS)"
+	$(MAKE) -f $(lastword $(MAKEFILE_LIST)) targets BUILDDIR=$(BUILD_RELEASE_DIR) CFLAGS="$(RELEASE_CFLAGS)" MOUNT_DIR="$(MOUNT_DIR)"
 
 all: build_debug build_release
 
@@ -113,6 +101,7 @@ QUAKE2_OBJS = \
 	$(BUILDDIR)/client/cl_input.o \
 	$(BUILDDIR)/client/cl_inv.o \
 	$(BUILDDIR)/client/cl_main.o \
+	$(BUILDDIR)/client/cl_newfx.o \
 	$(BUILDDIR)/client/cl_parse.o \
 	$(BUILDDIR)/client/cl_pred.o \
 	$(BUILDDIR)/client/cl_tent.o \
@@ -157,12 +146,7 @@ QUAKE2_OBJS = \
 	$(BUILDDIR)/client/q_shared.o \
 	$(BUILDDIR)/client/pmove.o
 
-ifeq ($(ARCH),axp)
-QUAKE2_AS_OBJS =  #blank
-else
-QUAKE2_AS_OBJS = \
-	$(BUILDDIR)/client/snd_mixa.o
-endif
+QUAKE2_AS_OBJS =  # disabled by default for modern x86_64 toolchains
 
 $(BUILDDIR)/quake2 : $(QUAKE2_OBJS) $(QUAKE2_AS_OBJS)
 	$(CC) $(CFLAGS) -o $@ $(QUAKE2_OBJS) $(QUAKE2_AS_OBJS) $(LDFLAGS)
@@ -183,6 +167,9 @@ $(BUILDDIR)/client/cl_inv.o :     $(CLIENT_DIR)/cl_inv.c
 	$(DO_CC)
 
 $(BUILDDIR)/client/cl_main.o :    $(CLIENT_DIR)/cl_main.c
+	$(DO_CC)
+
+$(BUILDDIR)/client/cl_newfx.o :   $(CLIENT_DIR)/cl_newfx.c
 	$(DO_CC)
 
 $(BUILDDIR)/client/cl_parse.o :   $(CLIENT_DIR)/cl_parse.c
@@ -311,6 +298,7 @@ $(BUILDDIR)/client/net_udp.o :    $(LINUX_DIR)/net_udp.c
 
 GAME_OBJS = \
 	$(BUILDDIR)/game/g_ai.o \
+	$(BUILDDIR)/game/g_chase.o \
 	$(BUILDDIR)/game/p_client.o \
 	$(BUILDDIR)/game/g_cmds.o \
 	$(BUILDDIR)/game/g_svcmds.o \
@@ -362,6 +350,9 @@ $(BUILDDIR)/game$(ARCH).$(SHLIBEXT) : $(GAME_OBJS)
 	$(CC) $(CFLAGS) $(SHLIBLDFLAGS) -o $@ $(GAME_OBJS)
 
 $(BUILDDIR)/game/g_ai.o :        $(GAME_DIR)/g_ai.c
+	$(DO_SHLIB_CC)
+
+$(BUILDDIR)/game/g_chase.o :     $(GAME_DIR)/g_chase.c
 	$(DO_SHLIB_CC)
 
 $(BUILDDIR)/game/p_client.o :    $(GAME_DIR)/p_client.c
@@ -852,18 +843,6 @@ REF_SOFT_OBJS = \
 	$(BUILDDIR)/ref_soft/r_sprite.o \
 	$(BUILDDIR)/ref_soft/r_surf.o \
 	\
-	$(BUILDDIR)/ref_soft/r_aclipa.o \
-	$(BUILDDIR)/ref_soft/r_draw16.o \
-	$(BUILDDIR)/ref_soft/r_drawa.o \
-	$(BUILDDIR)/ref_soft/r_edgea.o \
-	$(BUILDDIR)/ref_soft/r_scana.o \
-	$(BUILDDIR)/ref_soft/r_spr8.o \
-	$(BUILDDIR)/ref_soft/r_surf8.o \
-	$(BUILDDIR)/ref_soft/math.o \
-	$(BUILDDIR)/ref_soft/d_polysa.o \
-	$(BUILDDIR)/ref_soft/r_varsa.o \
-	$(BUILDDIR)/ref_soft/sys_dosa.o \
-	\
 	$(BUILDDIR)/ref_soft/q_shared.o \
 	$(BUILDDIR)/ref_soft/q_shlinux.o \
 	$(BUILDDIR)/ref_soft/glob.o
@@ -1066,10 +1045,10 @@ $(BUILDDIR)/ref_gl/glob.o :           $(LINUX_DIR)/glob.c
 clean: clean-debug clean-release
 
 clean-debug:
-	$(MAKE) clean2 BUILDDIR=$(BUILD_DEBUG_DIR) CFLAGS="$(DEBUG_CFLAGS)"
+	$(MAKE) -f $(lastword $(MAKEFILE_LIST)) clean2 BUILDDIR=$(BUILD_DEBUG_DIR) CFLAGS="$(DEBUG_CFLAGS)" MOUNT_DIR="$(MOUNT_DIR)"
 
 clean-release:
-	$(MAKE) clean2 BUILDDIR=$(BUILD_RELEASE_DIR) CFLAGS="$(DEBUG_CFLAGS)"
+	$(MAKE) -f $(lastword $(MAKEFILE_LIST)) clean2 BUILDDIR=$(BUILD_RELEASE_DIR) CFLAGS="$(RELEASE_CFLAGS)" MOUNT_DIR="$(MOUNT_DIR)"
 
 clean2:
 	-rm -f \

@@ -196,11 +196,12 @@ Loads the game dll
 void *Sys_GetGameAPI (void *parms)
 {
 	void	*(*GetGameAPI) (void *);
+    const char *dlerr = NULL;
 
 	char	name[MAX_OSPATH];
 	char	curpath[MAX_OSPATH];
 	char	*path;
-#ifdef __i386__
+#if defined(__i386__) || defined(__x86_64__)
 	const char *gamename = "gamei386.so";
 #elif defined __alpha__
 	const char *gamename = "gameaxp.so";
@@ -224,19 +225,26 @@ void *Sys_GetGameAPI (void *parms)
 	{
 		path = FS_NextPath (path);
 		if (!path)
+		{
+			if (dlerr)
+				Com_Printf ("Sys_GetGameAPI: last dlopen error: %s\n", dlerr);
 			return NULL;		// couldn't find one anywhere
+		}
 		sprintf (name, "%s/%s/%s", curpath, path, gamename);
+		Com_DPrintf ("Sys_GetGameAPI trying %s\n", name);
 		game_library = dlopen (name, RTLD_NOW );
 		if (game_library)
 		{
 			Com_DPrintf ("LoadLibrary (%s)\n",name);
 			break;
 		}
+		dlerr = dlerror();
 	}
 
 	GetGameAPI = (void *)dlsym (game_library, "GetGameAPI");
 	if (!GetGameAPI)
 	{
+		Com_Printf ("Sys_GetGameAPI: dlsym(GetGameAPI) failed: %s\n", dlerror());
 		Sys_UnloadGame ();		
 		return NULL;
 	}

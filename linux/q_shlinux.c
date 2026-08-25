@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #include <sys/types.h>
 #include <errno.h>
 #include <stdio.h>
@@ -6,6 +8,7 @@
 #include <unistd.h>
 #include <sys/mman.h>
 #include <sys/time.h>
+#include <ctype.h>
 
 #include "../linux/glob.h"
 
