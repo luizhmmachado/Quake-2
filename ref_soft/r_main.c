@@ -20,6 +20,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // r_main.c
 
 #include "r_local.h"
+#include <stdint.h>
+
 
 viddef_t	vid;
 refimport_t	ri;
@@ -244,6 +246,11 @@ void R_ImageList_f( void );
 
 void R_Register (void)
 {
+
+	printf("========== R_Register ==========\n");
+	printf("ri.Cvar_Get = %p\n", (void *)ri.Cvar_Get);
+	fflush(stdout);
+
 	sw_aliasstats = ri.Cvar_Get ("sw_polymodelstats", "0", 0);
 	sw_allow_modex = ri.Cvar_Get( "sw_allow_modex", "1", CVAR_ARCHIVE );
 	sw_clearcolor = ri.Cvar_Get ("sw_clearcolor", "2", 0);
@@ -251,6 +258,16 @@ void R_Register (void)
 	sw_draworder = ri.Cvar_Get ("sw_draworder", "0", 0);
 	sw_maxedges = ri.Cvar_Get ("sw_maxedges", STRINGER(MAXSTACKSURFACES), 0);
 	sw_maxsurfs = ri.Cvar_Get ("sw_maxsurfs", "0", 0);
+
+	printf("sw_maxsurfs = %p\n", (void *)sw_maxsurfs);
+	fflush(stdout);
+
+	if (!sw_maxsurfs)
+	{
+		printf("ERRO: sw_maxsurfs == NULL!\n");
+		fflush(stdout);
+		return false;
+	}
 	sw_mipcap = ri.Cvar_Get ("sw_mipcap", "0", 0);
 	sw_mipscale = ri.Cvar_Get ("sw_mipscale", "1", 0);
 	sw_reportedgeout = ri.Cvar_Get ("sw_reportedgeout", "0", 0);
@@ -378,22 +395,45 @@ R_NewMap
 */
 void R_NewMap (void)
 {
+	printf("DEBUG: Entrou em R_NewMap\n");
+	fflush(stdout);
+
+	printf("DEBUG R_NewMap:\n");
+	printf("  sw_maxsurfs = %p\n", (void *)sw_maxsurfs);
+	printf("  sw_maxedges = %p\n", (void *)sw_maxedges);
+	printf("  sw_mode = %p\n", (void *)sw_mode);
+	fflush(stdout);
+
 	r_viewcluster = -1;
+	printf("DEBUG: r_viewcluster = -1 OK\n");
+	fflush(stdout);
 
-	r_cnumsurfs = sw_maxsurfs->value;
+	// O suspeito número 1:
+	if (!sw_maxsurfs) {
+		printf("ERRO GRAVE: sw_maxsurfs esta nulo! Forcando valor padrao 0.\n");
+		r_cnumsurfs = 0;
+	} else {
+		r_cnumsurfs = sw_maxsurfs->value;
+	}
+	printf("DEBUG: sw_maxsurfs lido com sucesso: %f\n", r_cnumsurfs); fflush(stdout);
 
-	if (r_cnumsurfs <= MINSURFACES)
+	if (r_cnumsurfs <= MINSURFACES){
 		r_cnumsurfs = MINSURFACES;
+	}
 
 	if (r_cnumsurfs > NUMSTACKSURFACES)
 	{
+		printf("DEBUG: Vai alocar memoria (malloc)\n");
+		fflush(stdout);
 		surfaces = malloc (r_cnumsurfs * sizeof(surf_t));
 		surface_p = surfaces;
 		surf_max = &surfaces[r_cnumsurfs];
 		r_surfsonstack = false;
-	// surface 0 doesn't really exist; it's just a dummy because index 0
-	// is used to indicate no edge attached to surface
+
 		surfaces--;
+
+		printf("DEBUG: Vai chamar R_SurfacePatch\n");
+		fflush(stdout);
 		R_SurfacePatch ();
 	}
 	else
@@ -406,9 +446,9 @@ void R_NewMap (void)
 
 	r_numallocatededges = sw_maxedges->value;
 
-	if (r_numallocatededges < MINEDGES)
+	if (r_numallocatededges < MINEDGES){
 		r_numallocatededges = MINEDGES;
-
+	}
 	if (r_numallocatededges <= NUMSTACKEDGES)
 	{
 		auxedges = NULL;
@@ -961,7 +1001,9 @@ void R_CalcPalette (void)
 	}
 
 	R_GammaCorrectAndSetPalette( ( const unsigned char * ) palette[0] );
-//	SWimp_SetPalette( palette[0] );
+
+	//ri.Con_Printf(PRINT_ALL, "Atualizou a paleta!!\n");
+	SWimp_SetPalette( palette[0] );
 }
 
 //=======================================================================
@@ -990,81 +1032,106 @@ R_RenderFrame
 */
 void R_RenderFrame (refdef_t *fd)
 {
-	r_newrefdef = *fd;
+    vid.rowbytes = vid.width;
+    d_viewbuffer = vid.buffer;
+    r_dowarp = false;
 
-	if (!r_worldmodel && !( r_newrefdef.rdflags & RDF_NOWORLDMODEL ) )
-		ri.Sys_Error (ERR_FATAL,"R_RenderView: NULL worldmodel");
+    // 🛑 REMOVIDO O memset(0) QUE ESTAVA APAGANDO O 2D/MENU QUANDO r_worldmodel ERA NULL!
 
-	VectorCopy (fd->vieworg, r_refdef.vieworg);
-	VectorCopy (fd->viewangles, r_refdef.viewangles);
+    //ri.Con_Printf(PRINT_ALL, "DEBUG: R_RenderFrame EXECUTOU!\n");
+    r_newrefdef = *fd;
 
-	if (r_speeds->value || r_dspeeds->value)
-		r_time1 = Sys_Milliseconds ();
+    if (!r_worldmodel && !( r_newrefdef.rdflags & RDF_NOWORLDMODEL ) )
+       ri.Sys_Error (ERR_FATAL,"R_RenderView: NULL worldmodel");
 
-	R_SetupFrame ();
+    VectorCopy (fd->vieworg, r_refdef.vieworg);
+    VectorCopy (fd->viewangles, r_refdef.viewangles);
 
-	R_MarkLeaves ();	// done here so we know if we're in water
+    if (r_speeds->value || r_dspeeds->value)
+       r_time1 = Sys_Milliseconds ();
 
-	R_PushDlights (r_worldmodel);
+    // Executa a configuração interna do frame
+    R_SetupFrame ();
 
+    d_viewbuffer = vid.buffer;
+    r_dowarp = false;
+
+    // 🛑 CRUCIAL PARA ENGINE 64-BITS: Reset do Z-Buffer a cada frame para não bloquear os polígonos 3D
+    if (d_pzbuffer) {
+       memset(d_pzbuffer, 0xff, vid.width * vid.height * sizeof(short));
+    }
+
+    R_MarkLeaves ();   // done here so we know if we're in water
+
+    R_PushDlights (r_worldmodel);
+
+    d_viewbuffer = vid.buffer;
+
+	r_fullbright->value = 1; // 👈 OBRIGA O JOGO A IGNORAR SOMBRAS E PINTAR COM LUZ MÁXIMA
 	R_EdgeDrawing ();
 
-	if (r_dspeeds->value)
-	{
-		se_time2 = Sys_Milliseconds ();
-		de_time1 = se_time2;
-	}
+    // 🔍 CONTADOR DE DIAGNÓSTICO DO 3D:
+    int pixels_3d = 0;
+    uint8_t *src_debug = (uint8_t *)vid.buffer;
+    for (int i = 0; i < vid.width * vid.height; i++) {
+        if (src_debug[i] != 0) pixels_3d++;
+    }
+    //ri.Con_Printf(PRINT_ALL, "DEBUG: Pixels apos R_EdgeDrawing: %d\n", pixels_3d);
 
-	R_DrawEntitiesOnList ();
+    if (r_dspeeds->value)
+    {
+       se_time2 = Sys_Milliseconds ();
+       de_time1 = se_time2;
+    }
 
-	if (r_dspeeds->value)
-	{
-		de_time2 = Sys_Milliseconds ();
-		dp_time1 = Sys_Milliseconds ();
-	}
+    d_viewbuffer = vid.buffer;
 
-	R_DrawParticles ();
+    R_DrawEntitiesOnList ();
 
-	if (r_dspeeds->value)
-		dp_time2 = Sys_Milliseconds ();
+    if (r_dspeeds->value)
+    {
+       de_time2 = Sys_Milliseconds ();
+       dp_time1 = Sys_Milliseconds ();
+    }
 
-	/*
-	 * Legacy software alpha surface path is unstable on modern 64-bit builds.
-	 * Skip translucent world pass to keep gameplay stable.
-	 */
+    R_DrawParticles ();
+
+    if (r_dspeeds->value)
+       dp_time2 = Sys_Milliseconds ();
+
 #if defined(__x86_64__)
-	r_alpha_surfaces = NULL;
+    r_alpha_surfaces = NULL;
 #else
-	R_DrawAlphaSurfaces();
+    R_DrawAlphaSurfaces();
 #endif
 
-	R_SetLightLevel ();
+    R_SetLightLevel ();
 
-	if (r_dowarp)
-		D_WarpScreen ();
+    if (r_dowarp)
+       D_WarpScreen ();
 
-	if (r_dspeeds->value)
-		da_time1 = Sys_Milliseconds ();
+    if (r_dspeeds->value)
+       da_time1 = Sys_Milliseconds ();
 
-	if (r_dspeeds->value)
-		da_time2 = Sys_Milliseconds ();
+    if (r_dspeeds->value)
+       da_time2 = Sys_Milliseconds ();
 
-	R_CalcPalette ();
+    R_CalcPalette ();
 
-	if (sw_aliasstats->value)
-		R_PrintAliasStats ();
-		
-	if (r_speeds->value)
-		R_PrintTimes ();
+    if (sw_aliasstats->value)
+       R_PrintAliasStats ();
 
-	if (r_dspeeds->value)
-		R_PrintDSpeeds ();
+    if (r_speeds->value)
+       R_PrintTimes ();
 
-	if (sw_reportsurfout->value && r_outofsurfaces)
-		ri.Con_Printf (PRINT_ALL,"Short %d surfaces\n", r_outofsurfaces);
+    if (r_dspeeds->value)
+       R_PrintDSpeeds ();
 
-	if (sw_reportedgeout->value && r_outofedges)
-		ri.Con_Printf (PRINT_ALL,"Short roughly %d edges\n", r_outofedges * 2 / 3);
+    if (sw_reportsurfout->value && r_outofsurfaces)
+       ri.Con_Printf (PRINT_ALL,"Short %d surfaces\n", r_outofsurfaces);
+
+    if (sw_reportedgeout->value && r_outofedges)
+       ri.Con_Printf (PRINT_ALL,"Short roughly %d edges\n", r_outofedges * 2 / 3);
 }
 
 /*
@@ -1074,6 +1141,9 @@ void R_InitGraphics( int width, int height )
 {
 	vid.width  = width;
 	vid.height = height;
+	vid.rowbytes = width; // 👈 O rasterizador precisa saber o pitch exato (bytes por linha)
+
+	d_viewbuffer = vid.buffer;
 
 	// free z buffer
 	if ( d_pzbuffer )
@@ -1090,7 +1160,7 @@ void R_InitGraphics( int width, int height )
 		sc_base = NULL;
 	}
 
-	d_pzbuffer = malloc(vid.width*vid.height*2);
+	d_pzbuffer = malloc(vid.width * vid.height * sizeof(short));
 
 	R_InitCaches ();
 
@@ -1102,6 +1172,12 @@ void R_InitGraphics( int width, int height )
 */
 void R_BeginFrame( float camera_separation )
 {
+	d_viewbuffer = vid.buffer;
+
+	//printf("DEBUG: R_BeginFrame chamado. vid.buffer = %p\n", vid.buffer);
+	if (!vid.buffer) {
+		printf("ERRO CRITICO: vid.buffer esta NULL!\n");
+	}
 	extern void Draw_BuildGammaTable( void );
 
 	/*
@@ -1165,6 +1241,7 @@ void R_GammaCorrectAndSetPalette( const unsigned char *palette )
 
 	for ( i = 0; i < 256; i++ )
 	{
+
 		sw_state.currentpalette[i*4+0] = sw_state.gammatable[palette[i*4+0]];
 		sw_state.currentpalette[i*4+1] = sw_state.gammatable[palette[i*4+1]];
 		sw_state.currentpalette[i*4+2] = sw_state.gammatable[palette[i*4+2]];
@@ -1360,6 +1437,7 @@ GetRefAPI
 
 @@@@@@@@@@@@@@@@@@@@@
 */
+/*
 refexport_t GetRefAPI (refimport_t rimp)
 {
 	refexport_t	re;
@@ -1400,6 +1478,7 @@ refexport_t GetRefAPI (refimport_t rimp)
 
 	return re;
 }
+*/
 
 #ifndef REF_HARD_LINKED
 // this is only here so the functions in q_shared.c and q_shwin.c can link

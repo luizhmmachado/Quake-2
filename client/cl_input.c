@@ -539,4 +539,15 @@ void CL_SendCmd (void)
 	Netchan_Transmit (&cls.netchan, buf.cursize, buf.data);	
 }
 
+void CL_ApplyMouse(int mx, int my)
+{
+	cvar_t *m_yaw = Cvar_Get("m_yaw", "0.022", 0);
+	cvar_t *m_pitch = Cvar_Get("m_pitch", "0.022", 0);
+	cvar_t *sensitivity = Cvar_Get("sensitivity", "3", 0);
+	cvar_t *freelook = Cvar_Get("freelook", "1", 0);
 
+	if (freelook->value) {
+		cl.viewangles[1] -= m_yaw->value * sensitivity->value * mx;
+		cl.viewangles[0] += m_pitch->value * sensitivity->value * my;
+	}
+}

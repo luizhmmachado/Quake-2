@@ -315,7 +315,7 @@ Sets scr_vrect, the coordinates of the rendered window
 */
 static void SCR_CalcVrect (void)
 {
-	int		size;
+	int size;
 
 	// bound viewsize
 	if (scr_viewsize->value < 40)
@@ -325,14 +325,22 @@ static void SCR_CalcVrect (void)
 
 	size = scr_viewsize->value;
 
-	scr_vrect.width = viddef.width*size/100;
+	// Usa viddef do cliente; se vier zerada, aplica o fallback direto
+	int w = viddef.width ? viddef.width : 320;
+	int h = viddef.height ? viddef.height : 240;
+
+	scr_vrect.width = w * size / 100;
 	scr_vrect.width &= ~7;
 
-	scr_vrect.height = viddef.height*size/100;
+	scr_vrect.height = h * size / 100;
 	scr_vrect.height &= ~1;
 
-	scr_vrect.x = (viddef.width - scr_vrect.width)/2;
-	scr_vrect.y = (viddef.height - scr_vrect.height)/2;
+	scr_vrect.x = (w - scr_vrect.width) / 2;
+	scr_vrect.y = (h - scr_vrect.height) / 2;
+
+	// Trava de segurança absoluta
+	if (scr_vrect.width <= 0)  scr_vrect.width = 320;
+	if (scr_vrect.height <= 0) scr_vrect.height = 240;
 }
 
 
@@ -429,6 +437,13 @@ void SCR_Init (void)
 	Cmd_AddCommand ("sizeup",SCR_SizeUp_f);
 	Cmd_AddCommand ("sizedown",SCR_SizeDown_f);
 	Cmd_AddCommand ("sky",SCR_Sky_f);
+
+	if (scr_vrect.width == 0 || scr_vrect.height == 0) {
+		scr_vrect.x = 0;
+		scr_vrect.y = 0;
+		scr_vrect.width = viddef.width ? viddef.width : 320;
+		scr_vrect.height = viddef.height ? viddef.height : 240;
+	}
 
 	scr_initialized = true;
 }

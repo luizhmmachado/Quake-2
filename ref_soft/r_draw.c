@@ -73,6 +73,29 @@ smoothly scrolled off.
 */
 void Draw_Char (int x, int y, int num)
 {
+	// Converte coordenadas virtuais centradas em 320x240 para a tela atual
+	if (x < 0) x += (vid.width - 320) / 2;
+	if (y < 0) y += (vid.height - 240) / 2;
+
+	num &= 255;
+
+	if (num == 32 || num == 32+128)
+		return;
+
+	//static int char_count = 0;
+	//if (num > 32) { // Ignora espaços em branco
+	//	printf("[DEBUG Menu] Desenhando caractere '%c' em (%d, %d)\n", num, x, y);
+	//}
+
+	//num &= 255;
+
+	// 🔍 DIAGNÓSTICO: Se entrar aqui, o 2D está tentando desenhar texto/console
+	/*static int char_draw_count = 0;
+	char_draw_count++;
+	if (char_draw_count % 100 == 0) {
+		ri.Con_Printf(PRINT_ALL, "DEBUG: Draw_Char EXECUTOU 100 vezes! (num=%d)\n", num);
+	}*/
+
 	byte			*dest;
 	byte			*source;
 	int				drawline;	
@@ -160,20 +183,21 @@ void Draw_GetPicSize (int *w, int *h, char *pic)
 Draw_StretchPicImplementation
 =============
 */
-void Draw_StretchPicImplementation (int x, int y, int w, int h, image_t	*pic)
+void Draw_StretchPicImplementation (int x, int y, int w, int h, image_t *pic)
 {
-	byte			*dest, *source;
-	int				v, u, sv;
-	int				height;
-	int				f, fstep;
-	int				skip;
+	byte            *dest, *source;
+	int             v, u, sv;
+	int             height;
+	int             f, fstep;
+	int             skip;
 
-	if ((x < 0) ||
-		(x + w > vid.width) ||
-		(y + h > vid.height))
-	{
-		ri.Sys_Error (ERR_FATAL,"Draw_Pic: bad coordinates");
-	}
+	// 1. Converte coordenadas virtuais centradas em 320x240 para a tela atual
+	if (x < 0) x += (vid.width - 320) / 2;
+	if (y < 0) y += (vid.height - 240) / 2;
+
+	// 2. Trava de segurança apenas para evitar estouro fatal de memória à direita/baixo
+	if (x < 0 || (x + w) > vid.width || (y + h) > vid.height)
+		return;
 
 	height = h;
 	if (y < 0)
@@ -252,6 +276,16 @@ Draw_Pic
 */
 void Draw_Pic (int x, int y, char *name)
 {
+
+	// Se o valor for negativo por conta do alinhamento central de 320x240,
+	// converta para coordenada absoluta real da tela atual:
+	if (x < 0) x += (vid.width - 320) / 2;
+	if (y < 0) y += (vid.height - 240) / 2;
+
+	// Trava de segurança apenas para não estourar a memória:
+	if (x >= vid.width || y >= vid.height)
+		return;
+
 	image_t			*pic;
 	byte			*dest, *source;
 	int				v, u;
@@ -427,19 +461,22 @@ Draw_FadeScreen
 */
 void Draw_FadeScreen (void)
 {
-	int			x,y;
-	byte		*pbuf;
-	int	t;
+	int x, y;
+	byte *pbuf;
+	int t;
 
-	for (y=0 ; y<vid.height ; y++)
+	for (y = 0; y < vid.height; y++)
 	{
-		pbuf = (byte *)(vid.buffer + vid.rowbytes*y);
-		t = (y & 1) << 1;
+		pbuf = (byte *)(vid.buffer + vid.rowbytes * y);
 
-		for (x=0 ; x<vid.width ; x++)
+		// Pega o resto da divisão por 8 para deslocar a "janela" a cada linha
+		t = y & 7;
+
+		for (x = 0; x < vid.width; x++)
 		{
-			if ((x & 3) != t)
-				pbuf[x] = 0;
+			// Ciclo de 8 pixels. Preserva apenas 1 pixel a cada 8.
+			if ((x & 7) != t)
+				pbuf[x] = 0; // 0 = Cor preta na paleta do Quake
 		}
 	}
 }
