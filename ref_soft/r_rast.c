@@ -320,6 +320,13 @@ void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1)
 
 	side = ceilv0 > r_ceilv1;
 
+	// 🛡️ TRAVA 1: Evita estouro de edges alocadas
+	if (edge_p >= edge_max)
+	{
+		// Limite de edges por frame excedido, descarta a edge com segurança
+		return;
+	}
+
 	edge = edge_p++;
 
 	edge->owner = r_pedge;
@@ -328,7 +335,7 @@ void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1)
 
 	if (side == 0)
 	{
-	// trailing edge (go from p1 to p2)
+		// trailing edge (go from p1 to p2)
 		v = ceilv0;
 		v2 = r_ceilv1 - 1;
 
@@ -340,7 +347,7 @@ void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1)
 	}
 	else
 	{
-	// leading edge (go from p2 to p1)
+		// leading edge (go from p2 to p1)
 		v2 = ceilv0 - 1;
 		v = r_ceilv1;
 
@@ -351,25 +358,27 @@ void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1)
 		u = r_u1 + ((float)v - r_v1) * u_step;
 	}
 
+	// 🛡️ TRAVA 2: Garante que 'v' e 'v2' fiquem rigorosamente dentro do array
+	if (v < 0 || v >= MAXHEIGHT || v2 < 0 || v2 >= MAXHEIGHT)
+	{
+		return; // Fora dos limites da tela/buffer, não insere nos vetores
+	}
+
 	edge->u_step = u_step*0x100000;
 	edge->u = u*0x100000 + 0xFFFFF;
 
-// we need to do this to avoid stepping off the edges if a very nearly
-// horizontal edge is less than epsilon above a scan, and numeric error causes
-// it to incorrectly extend to the scan, and the extension of the line goes off
-// the edge of the screen
-// FIXME: is this actually needed?
+	// we need to do this to avoid stepping off the edges...
 	if (edge->u < r_refdef.vrect_x_adj_shift20)
 		edge->u = r_refdef.vrect_x_adj_shift20;
 	if (edge->u > r_refdef.vrectright_adj_shift20)
 		edge->u = r_refdef.vrectright_adj_shift20;
 
-//
-// sort the edge in normally
-//
+	//
+	// sort the edge in normally
+	//
 	u_check = edge->u;
 	if (edge->surfs[0])
-		u_check++;	// sort trailers after leaders
+		u_check++; // sort trailers after leaders
 
 	if (!newedges[v] || newedges[v]->u >= u_check)
 	{
@@ -388,6 +397,7 @@ void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1)
 	edge->nextremove = removeedges[v2];
 	removeedges[v2] = edge;
 }
+
 
 
 /*

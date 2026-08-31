@@ -3974,6 +3974,15 @@ M_Draw
 */
 void M_Draw (void)
 {
+
+	if (viddef.width <= 0)  viddef.width = 320;
+    if (viddef.height <= 0) viddef.height = 240;
+
+
+	// Garanta que a resolução de referência do menu não fique negativa:
+	int center_x = viddef.width / 2;
+	int center_y = viddef.height / 2;
+
 	if (cls.key_dest != key_menu)
 		return;
 

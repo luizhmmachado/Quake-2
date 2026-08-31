@@ -741,6 +741,7 @@ void R_PrintDSpeeds (void);
 void R_AnimateLight (void);
 void R_LightPoint (vec3_t p, vec3_t color);
 void R_SetupFrame (void);
+void R_SetSky (char *name, float rotate, vec3_t axis);
 void R_cshift_f (void);
 void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1);
 void R_ClipEdge (mvertex_t *pv0, mvertex_t *pv1, clipplane_t *clip);
