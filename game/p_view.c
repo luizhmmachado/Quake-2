@@ -493,6 +493,20 @@ void SV_CalcBlend (edict_t *ent)
 }
 
 
+#define WATERLEVEL_FEET			1		// only the feet are in the water
+#define WATERLEVEL_WAIST		2		// in the water up to the waist
+#define WATERLEVEL_UNDER		3		// completely underwater
+
+#define FALL_DELTA_SCALE		0.0001	// converts squared impact speed into fall delta
+#define FALL_WAIST_WATER_SCALE	0.25
+#define FALL_FEET_WATER_SCALE	0.5
+
+#define FALL_MIN_DELTA			1		// below this the fall is ignored
+#define FALL_FOOTSTEP_DELTA		15		// below this only a footstep is played
+#define FALL_DAMAGE_DELTA		30		// above this the player takes damage
+#define FALL_FAR_DELTA			55		// at or above this the "fall far" sound is played
+#define FALL_VALUE_MAX			40		// max view kick caused by the fall
+
 /*
 =================
 P_FallingDamage
@@ -520,41 +534,41 @@ void P_FallingDamage (edict_t *ent)
 			return;
 		delta = ent->velocity[2] - ent->client->oldvelocity[2];
 	}
-	delta = delta*delta * 0.0001;
+	delta = delta*delta * FALL_DELTA_SCALE;
 
 	// never take falling damage if completely underwater
-	if (ent->waterlevel == 3)
+	if (ent->waterlevel == WATERLEVEL_UNDER)
 		return;
-	if (ent->waterlevel == 2)
-		delta *= 0.25;
-	if (ent->waterlevel == 1)
-		delta *= 0.5;
+	if (ent->waterlevel == WATERLEVEL_WAIST)
+		delta *= FALL_WAIST_WATER_SCALE;
+	if (ent->waterlevel == WATERLEVEL_FEET)
+		delta *= FALL_FEET_WATER_SCALE;
 
-	if (delta < 1)
+	if (delta < FALL_MIN_DELTA)
 		return;
 
-	if (delta < 15)
+	if (delta < FALL_FOOTSTEP_DELTA)
 	{
 		ent->s.event = EV_FOOTSTEP;
 		return;
 	}
 
 	ent->client->fall_value = delta*0.5;
-	if (ent->client->fall_value > 40)
-		ent->client->fall_value = 40;
+	if (ent->client->fall_value > FALL_VALUE_MAX)
+		ent->client->fall_value = FALL_VALUE_MAX;
 	ent->client->fall_time = level.time + FALL_TIME;
 
-	if (delta > 30)
+	if (delta > FALL_DAMAGE_DELTA)
 	{
 		if (ent->health > 0)
 		{
-			if (delta >= 55)
+			if (delta >= FALL_FAR_DELTA)
 				ent->s.event = EV_FALLFAR;
 			else
 				ent->s.event = EV_FALL;
 		}
 		ent->pain_debounce_time = level.time;	// no normal pain sound
-		damage = (delta-30)/2;
+		damage = (delta-FALL_DAMAGE_DELTA)/2;
 		if (damage < 1)
 			damage = 1;
 		VectorSet (dir, 0, 0, 1);
