@@ -165,6 +165,7 @@ static int CheckPowerArmor (edict_t *ent, vec3_t point, vec3_t normal, int damag
 	int			pa_te_type;
 	int			power;
 	int			power_used;
+	int			absorbable_damage;
 
 	if (!damage)
 		return 0;
@@ -212,20 +213,20 @@ static int CheckPowerArmor (edict_t *ent, vec3_t point, vec3_t normal, int damag
 
 		damagePerCell = 1;
 		pa_te_type = TE_SCREEN_SPARKS;
-		damage = damage / 3;
+		absorbable_damage = damage / 3;
 	}
 	else
 	{
 		damagePerCell = 2;
 		pa_te_type = TE_SHIELD_SPARKS;
-		damage = (2 * damage) / 3;
+		absorbable_damage = (2 * damage) / 3;
 	}
 
 	save = power * damagePerCell;
 	if (!save)
 		return 0;
-	if (save > damage)
-		save = damage;
+	if (save > absorbable_damage)
+		save = absorbable_damage;
 
 	SpawnDamage (pa_te_type, point, normal, save);
 	ent->powerarmor_time = level.time + 0.2;
