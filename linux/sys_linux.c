@@ -201,7 +201,9 @@ void *Sys_GetGameAPI (void *parms)
 	char	name[MAX_OSPATH];
 	char	curpath[MAX_OSPATH];
 	char	*path;
-#if defined(__i386__) || defined(__x86_64__)
+#if defined(__x86_64__)
+	const char *gamename = "gamex86_64.so";
+#elif defined(__i386__)
 	const char *gamename = "gamei386.so";
 #elif defined __alpha__
 	const char *gamename = "gameaxp.so";
