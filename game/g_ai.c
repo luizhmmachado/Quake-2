@@ -639,13 +639,9 @@ qboolean M_CheckAttack (edict_t *self)
 	}
 	
 // missile attack
-	if (!self->monsterinfo.attack)
-		return false;
-		
-	if (level.time < self->monsterinfo.attack_finished)
-		return false;
-		
-	if (enemy_range == RANGE_FAR)
+	if (!self->monsterinfo.attack
+		|| level.time < self->monsterinfo.attack_finished
+		|| enemy_range == RANGE_FAR)
 		return false;
 
 	if (self->monsterinfo.aiflags & AI_STAND_GROUND)
