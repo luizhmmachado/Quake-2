@@ -1,0 +1,78 @@
+Checklist Audio - OpenAL Soft + SDL_sound
+
+Manter os sons originais (.wav do pak, mesmos volumes e atenuacoes).
+Remover o mixer antigo (snd_dma/snd_mix/OSS) e o CD-ROM do build do Linux.
+
+
+Build
+[x] Adicionar openal, SDL2 e SDL2_sound no flake.nix
+[x] Adicionar flags do openal e SDL2_sound no linux/Makefile.i386
+[x] Trocar snd_dma.o, snd_mix.o, snd_linux.o, snd_mixa.o e cd_linux.o pelos novos arquivos snd_*.o e cd_music.o
+[x] Compilar sem erros de link (com -std=gnu17 -fpermissive para o GCC 15)
+
+Inicializacao OpenAL (client/snd_al.c)
+[x] Implementar a mesma API de client/sound.h
+[x] S_Init: abrir device e criar contexto; se falhar, seguir sem som
+[x] Criar pool fixo de fontes (64 efeitos + 32 loops + 1 cinematica)
+[x] S_Shutdown: liberar fontes, buffers, contexto e device
+[x] Portar comandos play, stopsound, soundlist e soundinfo
+[x] S_Activate: zerar volume quando a janela perde o foco
+
+Sons originais (client/snd_mem.c, client/snd_wav.c, client/snd_sfx.c)
+[x] Reaproveitar GetWavinfo e S_LoadSound
+[x] Remover a reamostragem e enviar o PCM original com alBufferData
+[x] Trocar sfxcache_t por um buffer AL em sfx_t (client/snd_loc.h)
+[x] Manter S_FindName, S_RegisterSound, aliases e sons por modelo de jogador (S_RegisterPlayerSound)
+
+Audio 3D (client/snd_channel.c, client/snd_source.c)
+[x] S_Update: posicao e orientacao do ouvinte (forward/up)
+[x] Volume geral via s_volume
+[x] Manter o atraso timeofs dos sons
+[x] Manter a regra de escolha de canal do S_PickChannel
+[x] Usar AL_LINEAR_DISTANCE_CLAMPED com referencia 80 e distancia maxima 80 + 1/dist_mult (igual a atenuacao original)
+[x] ATTN_NONE e sons locais sem atenuacao (fonte relativa)
+[x] Atualizar a posicao dos sons presos a entidades a cada frame
+[x] Sons do proprio jogador tocam sem posicionamento
+
+Sons em loop / ambiente (client/snd_loop.c)
+[x] Uma fonte em loop para cada entidade com som
+[x] Parar loops de entidades que sairam do frame
+[x] Limitar loops para nao esgotar as fontes (maximo 32, so os que estao no alcance)
+
+HRTF
+[x] Ativar ALC_SOFT_HRTF pela cvar s_hrtf (0, 1 ou -1 = auto)
+[x] Aplicar mudanca com alcResetDeviceSOFT e mostrar o estado no console
+[ ] (Opcional) Opcao no menu de som
+
+Cinematicas (client/snd_raw.c)
+[x] S_RawSamples tocando por uma fonte em streaming
+[x] S_StopAllSounds parando tudo, inclusive o stream
+
+Musica (client/cd_music.c)
+[x] Manter a interface de client/cdaudio.h
+[x] Iniciar SDL_sound no CDAudio_Init
+[x] Procurar music/NN.ogg, music/trackNN.ogg, .mp3, .flac e .wav
+[x] Carregar via FS_LoadFile para funcionar com mods
+[x] Tocar em streaming com fila de buffers, atualizada em CDAudio_Update
+[x] Reiniciar a fonte se ela parar por falta de buffer
+[x] Repetir a faixa quando looping
+[x] Volume separado pela cvar cd_volume
+[x] Liberar tudo em CDAudio_Stop e CDAudio_Shutdown
+
+Limpeza
+[x] Apagar snd_dma.c, snd_mix.c, snd_linux.c, snd_mixa.s e cd_linux.c
+[x] Remover cvars sem uso (s_khz, s_mixahead, s_primary, snddevice)
+[ ] Menu de opcoes ainda mostra "sound quality" e "sound compatibility", que nao tem mais efeito
+
+Testes
+[x] Jogo compila e inicia o OpenAL (log: "OpenAL device: ...")
+[x] Parser de WAV novo igual ao original nos 500 .wav dos paks
+[x] SDL_sound decodifica music/02.ogg inteiro
+[ ] Tiros e inimigos soam na direcao certa ao girar a camera
+[ ] Sons somem na mesma distancia de antes
+[ ] Sons de ambiente em loop funcionam
+[ ] Musica do mapa toca sozinha a partir de music/
+[ ] Comandos cd play, cd stop e cd_volume funcionam
+[ ] HRTF liga e desliga
+[ ] Cinematicas com audio sincronizado
+[ ] Jogar 10+ minutos sem estalos, travamentos ou underflow

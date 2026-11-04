@@ -22,10 +22,14 @@
           ];
 
           # rw_x11.c / vid_so.c need the X11 headers and libs.
+          # snd_al.c / cd_music.c need OpenAL Soft and SDL_sound.
           buildInputs = with pkgs; [
             libx11
             libxext
             xorgproto
+            SDL2
+            openal
+            SDL2_sound
           ];
 
           shellHook = ''
@@ -44,8 +48,8 @@
           version = "3.21";
           src = self;
 
-          nativeBuildInputs = with pkgs; [ gnumake ];
-          buildInputs = with pkgs; [ libx11 libxext xorgproto ];
+          nativeBuildInputs = with pkgs; [ gnumake pkg-config ];
+          buildInputs = with pkgs; [ libx11 libxext xorgproto SDL2 openal SDL2_sound ];
 
           buildPhase = ''
             runHook preBuild
