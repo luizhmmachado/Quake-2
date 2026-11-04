@@ -144,6 +144,26 @@ void ValidateSelectedItem (edict_t *ent)
 
 /*
 ==================
+GiveItemByTouch
+
+Spawns a temporary copy of the item and makes the client touch it,
+so the normal pickup logic is applied
+==================
+*/
+static void GiveItemByTouch (edict_t *ent, gitem_t *it)
+{
+	edict_t		*it_ent;
+
+	it_ent = G_Spawn();
+	it_ent->classname = it->classname;
+	SpawnItem (it_ent, it);
+	Touch_Item (it_ent, ent, NULL, NULL);
+	if (it_ent->inuse)
+		G_FreeEdict(it_ent);
+}
+
+/*
+==================
 Cmd_Give_f
 
 Give items to a client
@@ -156,7 +176,6 @@ void Cmd_Give_f (edict_t *ent)
 	int			index;
 	int			i;
 	qboolean	give_all;
-	edict_t		*it_ent;
 
 	if (deathmatch->value && !sv_cheats->value)
 	{
@@ -232,12 +251,7 @@ void Cmd_Give_f (edict_t *ent)
 	if (give_all || Q_stricmp(name, "Power Shield") == 0)
 	{
 		it = FindItem("Power Shield");
-		it_ent = G_Spawn();
-		it_ent->classname = it->classname;
-		SpawnItem (it_ent, it);
-		Touch_Item (it_ent, ent, NULL, NULL);
-		if (it_ent->inuse)
-			G_FreeEdict(it_ent);
+		GiveItemByTouch (ent, it);
 
 		if (!give_all)
 			return;
@@ -286,12 +300,7 @@ void Cmd_Give_f (edict_t *ent)
 	}
 	else
 	{
-		it_ent = G_Spawn();
-		it_ent->classname = it->classname;
-		SpawnItem (it_ent, it);
-		Touch_Item (it_ent, ent, NULL, NULL);
-		if (it_ent->inuse)
-			G_FreeEdict(it_ent);
+		GiveItemByTouch (ent, it);
 	}
 }
 

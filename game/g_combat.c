@@ -33,6 +33,15 @@ qboolean CanDamage (edict_t *targ, edict_t *inflictor)
 {
 	vec3_t	dest;
 	trace_t	trace;
+	int		i;
+	static const float offsets[5][2] =
+	{
+		{0, 0},
+		{15.0, 15.0},
+		{15.0, -15.0},
+		{-15.0, 15.0},
+		{-15.0, -15.0}
+	};
 
 // bmodels need special checking because their origin is 0,0,0
 	if (targ->movetype == MOVETYPE_PUSH)
@@ -46,39 +55,17 @@ qboolean CanDamage (edict_t *targ, edict_t *inflictor)
 			return true;
 		return false;
 	}
-	
-	trace = gi.trace (inflictor->s.origin, vec3_origin, vec3_origin, targ->s.origin, inflictor, MASK_SOLID);
-	if (trace.fraction == 1.0)
-		return true;
 
-	VectorCopy (targ->s.origin, dest);
-	dest[0] += 15.0;
-	dest[1] += 15.0;
-	trace = gi.trace (inflictor->s.origin, vec3_origin, vec3_origin, dest, inflictor, MASK_SOLID);
-	if (trace.fraction == 1.0)
-		return true;
-
-	VectorCopy (targ->s.origin, dest);
-	dest[0] += 15.0;
-	dest[1] -= 15.0;
-	trace = gi.trace (inflictor->s.origin, vec3_origin, vec3_origin, dest, inflictor, MASK_SOLID);
-	if (trace.fraction == 1.0)
-		return true;
-
-	VectorCopy (targ->s.origin, dest);
-	dest[0] -= 15.0;
-	dest[1] += 15.0;
-	trace = gi.trace (inflictor->s.origin, vec3_origin, vec3_origin, dest, inflictor, MASK_SOLID);
-	if (trace.fraction == 1.0)
-		return true;
-
-	VectorCopy (targ->s.origin, dest);
-	dest[0] -= 15.0;
-	dest[1] -= 15.0;
-	trace = gi.trace (inflictor->s.origin, vec3_origin, vec3_origin, dest, inflictor, MASK_SOLID);
-	if (trace.fraction == 1.0)
-		return true;
-
+	// check the target origin first, then the four corners around it
+	for (i = 0 ; i < 5 ; i++)
+	{
+		VectorCopy (targ->s.origin, dest);
+		dest[0] += offsets[i][0];
+		dest[1] += offsets[i][1];
+		trace = gi.trace (inflictor->s.origin, vec3_origin, vec3_origin, dest, inflictor, MASK_SOLID);
+		if (trace.fraction == 1.0)
+			return true;
+	}
 
 	return false;
 }
@@ -178,6 +165,7 @@ static int CheckPowerArmor (edict_t *ent, vec3_t point, vec3_t normal, int damag
 	int			pa_te_type;
 	int			power;
 	int			power_used;
+	int			absorbable_damage;
 
 	if (!damage)
 		return 0;
@@ -225,20 +213,20 @@ static int CheckPowerArmor (edict_t *ent, vec3_t point, vec3_t normal, int damag
 
 		damagePerCell = 1;
 		pa_te_type = TE_SCREEN_SPARKS;
-		damage = damage / 3;
+		absorbable_damage = damage / 3;
 	}
 	else
 	{
 		damagePerCell = 2;
 		pa_te_type = TE_SHIELD_SPARKS;
-		damage = (2 * damage) / 3;
+		absorbable_damage = (2 * damage) / 3;
 	}
 
 	save = power * damagePerCell;
 	if (!save)
 		return 0;
-	if (save > damage)
-		save = damage;
+	if (save > absorbable_damage)
+		save = absorbable_damage;
 
 	SpawnDamage (pa_te_type, point, normal, save);
 	ent->powerarmor_time = level.time + 0.2;
