@@ -18,7 +18,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
 // r_surf.c: surface-related refresh code
-
+#include <stddef.h>
 #include "r_local.h"
 
 drawsurf_t	r_drawsurf;
@@ -450,7 +450,7 @@ surfcache_t     *D_SCAlloc (int width, int size)
 	if ((size <= 0) || (size > 0x10000))
 		ri.Sys_Error (ERR_FATAL,"D_SCAlloc: bad cache size %d\n", size);
 	
-	size = (int)&((surfcache_t *)0)->data[size];
+	size = (int)(offsetof(surfcache_t, data) + size);
 	size = (size + 3) & ~3;
 	if (size > sc_size)
 		ri.Sys_Error (ERR_FATAL,"D_SCAlloc: %i > cache size of %i",size, sc_size);

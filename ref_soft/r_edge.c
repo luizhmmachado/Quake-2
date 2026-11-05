@@ -18,7 +18,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
 // r_edge.c
-
+#include <stdint.h>
 #include "r_local.h"
 
 #ifndef id386
@@ -1074,7 +1074,7 @@ void D_DrawflatSurfaces (void)
 
 		// make a stable color for each surface by taking the low
 		// bits of the msurface pointer
-		D_FlatFillSurface (s, (int)s->msurf & 0xFF);
+		D_FlatFillSurface (s, (int)((uintptr_t)s->msurf & 0xFF));
 		D_DrawZSpans (s->spans);
 	}
 }
