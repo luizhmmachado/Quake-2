@@ -296,10 +296,10 @@ $(BUILDDIR)/client/sv_world.o :   $(SERVER_DIR)/sv_world.c
 $(BUILDDIR)/client/q_shlinux.o :  $(LINUX_DIR)/q_shlinux.c
 	$(DO_CC)
 
-$(BUILDDIR)/client/vid_menu.o :   $(LINUX_DIR)/vid_menu.c
+$(BUILDDIR)/client/vid_menu.o : $(LINUX_DIR)/vid_menu.c $(LINUX_DIR)/vid_modes.h
 	$(DO_CC)
 
-$(BUILDDIR)/client/vid_so.o :     $(LINUX_DIR)/vid_so.c
+$(BUILDDIR)/client/vid_so.o : $(LINUX_DIR)/vid_so.c $(LINUX_DIR)/vid_modes.h
 	$(DO_CC)
 
 $(BUILDDIR)/client/sys_linux.o :  $(LINUX_DIR)/sys_linux.c

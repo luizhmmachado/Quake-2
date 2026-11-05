@@ -1,9 +1,11 @@
 #include "../client/client.h"
 #include "../client/qmenu.h"
+#include "vid_modes.h"
 
 #define REF_SOFT	0
 #define REF_SOFTX11	1
 #define REF_OPENGL	2
+
 
 extern cvar_t *vid_ref;
 extern cvar_t *vid_fullscreen;
@@ -21,6 +23,7 @@ static cvar_t *sw_stipplealpha;
 static cvar_t *_windowed_mouse;
 
 extern void M_ForceMenuOff( void );
+
 
 /*
 ====================================================================
@@ -170,21 +173,14 @@ static void ApplyChanges( void *unused )
 */
 void VID_MenuInit( void )
 {
-	static const char *resolutions[] = 
-	{
-		"[320 240  ]",
-		"[400 300  ]",
-		"[512 384  ]",
-		"[640 480  ]",
-		"[800 600  ]",
-		"[960 720  ]",
-		"[1024 768 ]",
-		"[1152 864 ]",
-		"[1280 1024]",
-		"[1600 1200]",
-		"[1920 1080]",
-		0
-	};
+	static const char *resolutions[LINUX_VID_MODE_COUNT + 1];
+	int mode_index;
+
+	for (mode_index = 0; mode_index < LINUX_VID_MODE_COUNT; ++mode_index)
+		resolutions[mode_index] = linux_vid_modes[mode_index].label;
+
+	/* O menu usa 0 para saber que a lista terminou. */
+	resolutions[LINUX_VID_MODE_COUNT] = 0;
 	static const char *refs[] =
 	{
 		"[software      ]",
