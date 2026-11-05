@@ -9,12 +9,8 @@
 #include "rw_linux.h"
 
 void SWimp_InitPalette(void);              // Conserta o warning da paleta
+struct image_s *R_RegisterSkin(char *name); // r_image.c
 extern void CL_ApplyMouse(int mx, int my); // Nossa ponte com o cliente!
-
-extern viddef_t viddef;
-
-void KBD_Update(void);
-int MapKey(SDL_Keycode key);
 
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
@@ -241,7 +237,7 @@ refexport_t GetRefAPI (refimport_t rimp)
 
     re.BeginRegistration = R_BeginRegistration;
     re.RegisterModel = R_RegisterModel;
-    re.RegisterSkin = R_RegisterModel; /* No ref_soft, skins usam o loader de modelos/pics */
+    re.RegisterSkin = R_RegisterSkin;
     re.RegisterPic = Draw_FindPic;
     re.SetSky = R_SetSky;              /* ref_soft lida com skybox no BSP, não precisa de SetSky */
     re.EndRegistration = R_EndRegistration;
@@ -497,8 +493,8 @@ rserr_t SWimp_SetMode(int *pwidth, int *pheight, int mode, qboolean fullscreen)
     vid.height = modelist[mode].height;
     vid.rowbytes = vid.width;
 
-	viddef.width = vid.width;
-    viddef.height = vid.height;
+    // tells the client the new size; the client's viddef_t is not the renderer's
+    ri.Vid_NewWindow (vid.width, vid.height);
 
     if (pwidth)  *pwidth  = vid.width;
     if (pheight) *pheight = vid.height;

@@ -29,7 +29,11 @@ CTF_DIR=$(MOUNT_DIR)/ctf
 XATRIX_DIR=$(MOUNT_DIR)/xatrix
 
 CC=gcc
-BASE_CFLAGS=-Dstricmp=strcasecmp $(shell sdl2-config --cflags)
+SOUND_PKGS=openal SDL2_sound
+# gnu17: q_shared.h defines its own true/false, which are keywords in C23
+# -fpermissive: GCC 14+ turned implicit declarations and pointer mismatches
+# in the original code into errors, this keeps them as warnings
+BASE_CFLAGS=-std=gnu17 -fpermissive -Dstricmp=strcasecmp $(shell sdl2-config --cflags) $(shell pkg-config --cflags $(SOUND_PKGS))
 
 ifeq ($(ARCH),axp)
 RELEASE_CFLAGS=$(BASE_CFLAGS) -O2 -ffast-math -funroll-loops \
@@ -40,7 +44,7 @@ RELEASE_CFLAGS=$(BASE_CFLAGS) -O2 -ffast-math -funroll-loops \
 endif
 
 DEBUG_CFLAGS=$(BASE_CFLAGS) -g
-LDFLAGS=-ldl -lm $(shell sdl2-config --libs)
+LDFLAGS=-ldl -lm $(shell sdl2-config --libs) $(shell pkg-config --libs $(SOUND_PKGS))
 SVGALDFLAGS=-lvga
 XLDFLAGS=-lX11
 XCFLAGS=
@@ -112,9 +116,15 @@ QUAKE2_OBJS = \
 	$(BUILDDIR)/client/console.o \
 	$(BUILDDIR)/client/keys.o \
 	$(BUILDDIR)/client/menu.o \
-	$(BUILDDIR)/client/snd_dma.o \
+	$(BUILDDIR)/client/snd_al.o \
+	$(BUILDDIR)/client/snd_channel.o \
+	$(BUILDDIR)/client/snd_loop.o \
 	$(BUILDDIR)/client/snd_mem.o \
-	$(BUILDDIR)/client/snd_mix.o \
+	$(BUILDDIR)/client/snd_raw.o \
+	$(BUILDDIR)/client/snd_sfx.o \
+	$(BUILDDIR)/client/snd_source.o \
+	$(BUILDDIR)/client/snd_wav.o \
+	$(BUILDDIR)/client/cd_music.o \
 	$(BUILDDIR)/client/qmenu.o \
 	$(BUILDDIR)/client/m_flash.o \
 	\
@@ -136,11 +146,9 @@ QUAKE2_OBJS = \
 	$(BUILDDIR)/client/sv_user.o \
 	$(BUILDDIR)/client/sv_world.o \
 	\
-	$(BUILDDIR)/client/cd_linux.o \
 	$(BUILDDIR)/client/q_shlinux.o \
 	$(BUILDDIR)/client/vid_menu.o \
 	$(BUILDDIR)/client/vid_so.o \
-	$(BUILDDIR)/client/snd_linux.o \
 	$(BUILDDIR)/client/sys_linux.o \
 	$(BUILDDIR)/client/glob.o \
 	$(BUILDDIR)/client/net_udp.o \
@@ -198,13 +206,31 @@ $(BUILDDIR)/client/keys.o :       $(CLIENT_DIR)/keys.c
 $(BUILDDIR)/client/menu.o :       $(CLIENT_DIR)/menu.c
 	$(DO_CC)
 
-$(BUILDDIR)/client/snd_dma.o :    $(CLIENT_DIR)/snd_dma.c
+$(BUILDDIR)/client/snd_al.o :     $(CLIENT_DIR)/snd_al.c
+	$(DO_CC)
+
+$(BUILDDIR)/client/snd_channel.o : $(CLIENT_DIR)/snd_channel.c
+	$(DO_CC)
+
+$(BUILDDIR)/client/snd_loop.o :   $(CLIENT_DIR)/snd_loop.c
 	$(DO_CC)
 
 $(BUILDDIR)/client/snd_mem.o :    $(CLIENT_DIR)/snd_mem.c
 	$(DO_CC)
 
-$(BUILDDIR)/client/snd_mix.o :    $(CLIENT_DIR)/snd_mix.c
+$(BUILDDIR)/client/snd_raw.o :    $(CLIENT_DIR)/snd_raw.c
+	$(DO_CC)
+
+$(BUILDDIR)/client/snd_sfx.o :    $(CLIENT_DIR)/snd_sfx.c
+	$(DO_CC)
+
+$(BUILDDIR)/client/snd_source.o : $(CLIENT_DIR)/snd_source.c
+	$(DO_CC)
+
+$(BUILDDIR)/client/snd_wav.o :    $(CLIENT_DIR)/snd_wav.c
+	$(DO_CC)
+
+$(BUILDDIR)/client/cd_music.o :   $(CLIENT_DIR)/cd_music.c
 	$(DO_CC)
 
 $(BUILDDIR)/client/qmenu.o :      $(CLIENT_DIR)/qmenu.c
@@ -267,9 +293,6 @@ $(BUILDDIR)/client/sv_user.o :    $(SERVER_DIR)/sv_user.c
 $(BUILDDIR)/client/sv_world.o :   $(SERVER_DIR)/sv_world.c
 	$(DO_CC)
 
-$(BUILDDIR)/client/cd_linux.o :   $(LINUX_DIR)/cd_linux.c
-	$(DO_CC)
-
 $(BUILDDIR)/client/q_shlinux.o :  $(LINUX_DIR)/q_shlinux.c
 	$(DO_CC)
 
@@ -278,12 +301,6 @@ $(BUILDDIR)/client/vid_menu.o :   $(LINUX_DIR)/vid_menu.c
 
 $(BUILDDIR)/client/vid_so.o :     $(LINUX_DIR)/vid_so.c
 	$(DO_CC)
-
-$(BUILDDIR)/client/snd_linux.o :  $(LINUX_DIR)/snd_linux.c
-	$(DO_CC)
-
-$(BUILDDIR)/client/snd_mixa.o :   $(LINUX_DIR)/snd_mixa.s
-	$(DO_AS)
 
 $(BUILDDIR)/client/sys_linux.o :  $(LINUX_DIR)/sys_linux.c
 	$(DO_CC)

@@ -8,7 +8,7 @@ of the License, or (at your option) any later version.
 
 This program is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
 See the GNU General Public License for more details.
 
@@ -17,343 +17,120 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
-// snd_mem.c: sound caching
+// snd_mem.c -- loads the original WAV files into OpenAL buffers
 
 #include "client.h"
 #include "snd_loc.h"
 
-int			cache_full_cycle;
-
-byte *S_Alloc (int size);
-
 /*
-================
-ResampleSfx
-================
+==============
+S_UploadSound
+
+Hands the original PCM data to OpenAL at its native rate and width.
+8 bit WAV data is unsigned, which is what AL_FORMAT_MONO8 expects.
+==============
 */
-void ResampleSfx (sfx_t *sfx, int inrate, int inwidth, byte *data)
+static qboolean S_UploadSound (sfx_t *sfx, const wavinfo_t *info, byte *pcm)
 {
-	int		outcount;
-	int		srcsample;
-	float	stepscale;
-	int		i;
-	int		sample, samplefrac, fracstep;
-	sfxcache_t	*sc;
-	
-	sc = sfx->cache;
-	if (!sc)
-		return;
+    ALenum format = AL_FORMAT_MONO8;
 
-	stepscale = (float)inrate / dma.speed;	// this is usually 0.5, 1, or 2
+    if (info->width == 2)
+    {
+        format = AL_FORMAT_MONO16;
+        for (int i = 0; i < info->samples; i++)
+            ((short *)pcm)[i] = LittleShort (((short *)pcm)[i]);
+    }
 
-	outcount = sc->length / stepscale;
-	sc->length = outcount;
-	if (sc->loopstart != -1)
-		sc->loopstart = sc->loopstart / stepscale;
+    alGetError ();
+    alGenBuffers (1, &sfx->buffer);
+    alBufferData (sfx->buffer, format, pcm, info->samples * info->width, info->rate);
+    if (alGetError () != AL_NO_ERROR)
+    {
+        Com_Printf ("S_LoadSound: OpenAL rejected %s\n", sfx->name);
+        alDeleteBuffers (1, &sfx->buffer);
+        sfx->buffer = 0;
+        return false;
+    }
 
-	sc->speed = dma.speed;
-	if (s_loadas8bit->value)
-		sc->width = 1;
-	else
-		sc->width = inwidth;
-	sc->stereo = 0;
+    // sounds with a cue chunk restart from loopstart instead of stopping
+    if (info->loopstart != NO_LOOP_START && alIsExtensionPresent ("AL_SOFT_loop_points"))
+    {
+        ALint loop_points[2] = { info->loopstart, info->samples };
+        alBufferiv (sfx->buffer, AL_LOOP_POINTS_SOFT, loop_points);
+    }
 
-// resample / decimate to the current source rate
+    sfx->length = info->samples;
+    sfx->loopstart = info->loopstart;
+    sfx->rate = info->rate;
+    sfx->width = info->width;
 
-	if (stepscale == 1 && inwidth == 1 && sc->width == 1)
-	{
-// fast special case
-		for (i=0 ; i<outcount ; i++)
-			((signed char *)sc->data)[i]
-			= (int)( (unsigned char)(data[i]) - 128);
-	}
-	else
-	{
-// general case
-		samplefrac = 0;
-		fracstep = stepscale*256;
-		for (i=0 ; i<outcount ; i++)
-		{
-			srcsample = samplefrac >> 8;
-			samplefrac += fracstep;
-			if (inwidth == 2)
-				sample = LittleShort ( ((short *)data)[srcsample] );
-			else
-				sample = (int)( (unsigned char)(data[srcsample]) - 128) << 8;
-			if (sc->width == 2)
-				((short *)sc->data)[i] = sample;
-			else
-				((signed char *)sc->data)[i] = sample >> 8;
-		}
-	}
+    return true;
 }
 
-//=============================================================================
+static void S_SoundPath (const sfx_t *sfx, char *path, int size)
+{
+    const char *name = sfx->truename ? sfx->truename : sfx->name;
+
+    // '#' marks a path outside of the sound directory
+    if (name[0] == '#')
+        Com_sprintf (path, size, "%s", &name[1]);
+    else
+        Com_sprintf (path, size, "sound/%s", name);
+}
 
 /*
 ==============
 S_LoadSound
+
+Returns true once the sound has an OpenAL buffer
 ==============
 */
-sfxcache_t *S_LoadSound (sfx_t *s)
+qboolean S_LoadSound (sfx_t *sfx)
 {
-    char	namebuffer[MAX_QPATH];
-	byte	*data;
-	wavinfo_t	info;
-	int		len;
-	float	stepscale;
-	sfxcache_t	*sc;
-	int		size;
-	char	*name;
+    // resolved per player model by S_RegisterPlayerSound
+    if (S_IsPlayerSoundPlaceholder (sfx))
+        return false;
 
-	if (s->name[0] == '*')
-		return NULL;
+    if (sfx->buffer)
+        return true;
 
-// see if still in memory
-	sc = s->cache;
-	if (sc)
-		return sc;
+    char path[MAX_QPATH];
+    S_SoundPath (sfx, path, sizeof(path));
 
-//Com_Printf ("S_LoadSound: %x\n", (int)stackbuf);
-// load it in
-	if (s->truename)
-		name = s->truename;
-	else
-		name = s->name;
+    byte *data;
+    int size = FS_LoadFile (path, (void **)&data);
+    if (!data)
+    {
+        Com_DPrintf ("Couldn't load %s\n", path);
+        return false;
+    }
 
-	if (name[0] == '#')
-		strcpy(namebuffer, &name[1]);
-	else
-		Com_sprintf (namebuffer, sizeof(namebuffer), "sound/%s", name);
+    wavinfo_t info = GetWavinfo (sfx->name, data, size);
+    qboolean loaded = false;
+    if (info.channels == 1)
+        loaded = S_UploadSound (sfx, &info, data + info.dataofs);
+    else if (info.channels > 1)
+        Com_Printf ("%s is a stereo sample\n", sfx->name);
 
-//	Com_Printf ("loading %s\n",namebuffer);
+    FS_FreeFile (data);
 
-	size = FS_LoadFile (namebuffer, (void **)&data);
-
-	if (!data)
-	{
-		Com_DPrintf ("Couldn't load %s\n", namebuffer);
-		return NULL;
-	}
-
-	info = GetWavinfo (s->name, data, size);
-	if (info.channels != 1)
-	{
-		Com_Printf ("%s is a stereo sample\n",s->name);
-		FS_FreeFile (data);
-		return NULL;
-	}
-
-	stepscale = (float)info.rate / dma.speed;	
-	len = info.samples / stepscale;
-
-	len = len * info.width * info.channels;
-
-	sc = s->cache = Z_Malloc (len + sizeof(sfxcache_t));
-	if (!sc)
-	{
-		FS_FreeFile (data);
-		return NULL;
-	}
-	
-	sc->length = info.samples;
-	sc->loopstart = info.loopstart;
-	sc->speed = info.rate;
-	sc->width = info.width;
-	sc->stereo = info.channels;
-
-	ResampleSfx (s, sc->speed, sc->width, data + info.dataofs);
-
-	FS_FreeFile (data);
-
-	return sc;
-}
-
-
-
-/*
-===============================================================================
-
-WAV loading
-
-===============================================================================
-*/
-
-
-byte	*data_p;
-byte 	*iff_end;
-byte 	*last_chunk;
-byte 	*iff_data;
-int 	iff_chunk_len;
-
-
-short GetLittleShort(void)
-{
-	short val = 0;
-	val = *data_p;
-	val = val + (*(data_p+1)<<8);
-	data_p += 2;
-	return val;
-}
-
-int GetLittleLong(void)
-{
-	int val = 0;
-	val = *data_p;
-	val = val + (*(data_p+1)<<8);
-	val = val + (*(data_p+2)<<16);
-	val = val + (*(data_p+3)<<24);
-	data_p += 4;
-	return val;
-}
-
-void FindNextChunk(char *name)
-{
-	while (1)
-	{
-		data_p=last_chunk;
-
-		if (data_p >= iff_end)
-		{	// didn't find the chunk
-			data_p = NULL;
-			return;
-		}
-		
-		data_p += 4;
-		iff_chunk_len = GetLittleLong();
-		if (iff_chunk_len < 0)
-		{
-			data_p = NULL;
-			return;
-		}
-//		if (iff_chunk_len > 1024*1024)
-//			Sys_Error ("FindNextChunk: %i length is past the 1 meg sanity limit", iff_chunk_len);
-		data_p -= 8;
-		last_chunk = data_p + 8 + ( (iff_chunk_len + 1) & ~1 );
-		if (!strncmp(data_p, name, 4))
-			return;
-	}
-}
-
-void FindChunk(char *name)
-{
-	last_chunk = iff_data;
-	FindNextChunk (name);
-}
-
-
-void DumpChunks(void)
-{
-	char	str[5];
-	
-	str[4] = 0;
-	data_p=iff_data;
-	do
-	{
-		memcpy (str, data_p, 4);
-		data_p += 4;
-		iff_chunk_len = GetLittleLong();
-		Com_Printf ("0x%lx : %s (%d)\n", (unsigned long)(data_p - 4), str, iff_chunk_len);
-		data_p += (iff_chunk_len + 1) & ~1;
-	} while (data_p < iff_end);
+    return loaded;
 }
 
 /*
-============
-GetWavinfo
-============
+==============
+S_FreeSound
+==============
 */
-wavinfo_t GetWavinfo (char *name, byte *wav, int wavlength)
+void S_FreeSound (sfx_t *sfx)
 {
-	wavinfo_t	info;
-	int     i;
-	int     format;
-	int		samples;
+    if (!sfx->buffer)
+        return;
 
-	memset (&info, 0, sizeof(info));
+    // a buffer can't be deleted while a source still holds it
+    S_StopChannelsUsing (sfx);
+    S_StopLoopSoundsUsing (sfx);
 
-	if (!wav)
-		return info;
-		
-	iff_data = wav;
-	iff_end = wav + wavlength;
-
-// find "RIFF" chunk
-	FindChunk("RIFF");
-	if (!(data_p && !strncmp(data_p+8, "WAVE", 4)))
-	{
-		Com_Printf("Missing RIFF/WAVE chunks\n");
-		return info;
-	}
-
-// get "fmt " chunk
-	iff_data = data_p + 12;
-// DumpChunks ();
-
-	FindChunk("fmt ");
-	if (!data_p)
-	{
-		Com_Printf("Missing fmt chunk\n");
-		return info;
-	}
-	data_p += 8;
-	format = GetLittleShort();
-	if (format != 1)
-	{
-		Com_Printf("Microsoft PCM format only\n");
-		return info;
-	}
-
-	info.channels = GetLittleShort();
-	info.rate = GetLittleLong();
-	data_p += 4+2;
-	info.width = GetLittleShort() / 8;
-
-// get cue chunk
-	FindChunk("cue ");
-	if (data_p)
-	{
-		data_p += 32;
-		info.loopstart = GetLittleLong();
-//		Com_Printf("loopstart=%d\n", sfx->loopstart);
-
-	// if the next chunk is a LIST chunk, look for a cue length marker
-		FindNextChunk ("LIST");
-		if (data_p)
-		{
-			if (!strncmp (data_p + 28, "mark", 4))
-			{	// this is not a proper parse, but it works with cooledit...
-				data_p += 24;
-				i = GetLittleLong ();	// samples in loop
-				info.samples = info.loopstart + i;
-//				Com_Printf("looped length: %i\n", i);
-			}
-		}
-	}
-	else
-		info.loopstart = -1;
-
-// find data chunk
-	FindChunk("data");
-	if (!data_p)
-	{
-		Com_Printf("Missing data chunk\n");
-		return info;
-	}
-
-	data_p += 4;
-	samples = GetLittleLong () / info.width;
-
-	if (info.samples)
-	{
-		if (samples < info.samples)
-			Com_Error (ERR_DROP, "Sound %s has a bad loop length", name);
-	}
-	else
-		info.samples = samples;
-
-	info.dataofs = data_p - wav;
-	
-	return info;
+    alDeleteBuffers (1, &sfx->buffer);
+    sfx->buffer = 0;
 }
-
