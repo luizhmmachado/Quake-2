@@ -13,6 +13,9 @@ extern void CL_ApplyMouse(int mx, int my); // Nossa ponte com o cliente!
 
 extern viddef_t viddef;
 
+void KBD_Update(void);
+int MapKey(SDL_Keycode key);
+
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
 static SDL_Texture *texture = NULL;
