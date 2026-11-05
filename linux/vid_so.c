@@ -6,9 +6,13 @@
 
 #include <assert.h>
 #include <dlfcn.h> // ELF dl loader
+#include <stdio.h>
+#include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <errno.h>
+#include "vid_modes.h"
+
 
 #include "../client/client.h"
 
@@ -28,8 +32,6 @@ cvar_t		*vid_fullscreen;
 viddef_t	viddef;				// global video state; used by other modules
 void		*reflib_library;		// Handle to refresh DLL 
 qboolean	reflib_active = 0;
-
-#define VID_NUM_MODES ( sizeof( vid_modes ) / sizeof( vid_modes[0] ) )
 
 /** KEYBOARD **************************************************************/
 
@@ -106,43 +108,15 @@ void VID_Restart_f (void)
 	vid_ref->modified = true;
 }
 
-/*
-** VID_GetModeInfo
-*/
-typedef struct vidmode_s
-{
-	const char *description;
-	int         width, height;
-	int         mode;
-} vidmode_t;
 
-vidmode_t vid_modes[] =
-{
-	{ "Mode 0: 320x240",   320, 240,   0 },
-	{ "Mode 1: 400x300",   400, 300,   1 },
-	{ "Mode 2: 512x384",   512, 384,   2 },
-	{ "Mode 3: 640x480",   640, 480,   3 },
-	{ "Mode 4: 800x600",   800, 600,   4 },
-	{ "Mode 5: 960x720",   960, 720,   5 },
-	{ "Mode 6: 1024x768",  1024, 768,  6 },
-	{ "Mode 7: 1152x864",  1152, 864,  7 },
-	{ "Mode 8: 1280x1024",  1280, 1024, 8 },
-	{ "Mode 9: 1600x1200", 1280, 720, 9 },
-
-	{ "Mode 10: 1600x1200", 1280, 720, 10 },
-	{ "Mode 11: 1600x1200", 1366, 768, 11 },
-	{ "Mode 12: 1600x1200", 1920, 1080, 12 }
-
-
-};
 
 qboolean VID_GetModeInfo( int *width, int *height, int mode )
 {
-	if ( mode < 0 || mode >= VID_NUM_MODES )
+	if ( mode < 0 || mode >= LINUX_VID_MODE_COUNT )
 		return false;
 
-	*width  = vid_modes[mode].width;
-	*height = vid_modes[mode].height;
+	*width  = linux_vid_modes[mode].width;
+	*height = linux_vid_modes[mode].height;
 
 	return true;
 }
@@ -191,9 +165,14 @@ qboolean VID_LoadRefresh( char *name )
 	refimport_t	ri;
 	GetRefAPI_t	GetRefAPI;
 	char	fn[MAX_OSPATH];
+	char	config_dir[MAX_OSPATH];
+	char	executable_path[MAX_OSPATH];
+	char	*last_slash;
 	struct stat st;
 	extern uid_t saved_euid;
 	FILE *fp;
+	ssize_t path_length;
+	int path_result;
 	
 	if ( reflib_active )
 	{
@@ -212,17 +191,48 @@ qboolean VID_LoadRefresh( char *name )
 	//regain root
 	seteuid(saved_euid);
 
-	if ((fp = fopen(SO_FILE, "r")) == NULL) {
-		Com_Printf( "LoadLibrary(\"%s\") failed: can't open " SO_FILE " (required for location of ref libraries)\n", name);
-		return false;
+	config_dir[0] = '\0';
+	if ((fp = fopen(SO_FILE, "r")) != NULL) {
+		if (fgets(config_dir, sizeof(config_dir), fp) != NULL) {
+			size_t len = strlen(config_dir);
+			while (len > 0 && (config_dir[len - 1] == '\n' || config_dir[len - 1] == '\r'))
+				config_dir[--len] = '\0';
+		}
+		fclose(fp);
 	}
-	fgets(fn, sizeof(fn), fp);
-	fclose(fp);
-	if (*fn && fn[strlen(fn) - 1] == '\n')
-		fn[strlen(fn) - 1] = 0;
 
-	strcat(fn, "/");
-	strcat(fn, name);
+	fn[0] = '\0';
+	path_result = -1;
+	if (config_dir[0] != '\0')
+		path_result = snprintf(fn, sizeof(fn), "%s/%s", config_dir, name);
+	if (path_result >= 0 && path_result < (int)sizeof(fn) && access(fn, R_OK) == 0) {
+		Com_Printf("Loading renderer from configured path: %s\n", fn);
+	} else {
+		/* Build outputs place the renderer beside the executable. */
+		path_length = readlink("/proc/self/exe", executable_path,
+		                       sizeof(executable_path) - 1);
+		if (path_length < 0) {
+			Com_Printf("LoadLibrary(\"%s\") failed: no usable " SO_FILE
+			           " entry and cannot locate the executable: %s\n",
+			           name, strerror(errno));
+			return false;
+		}
+		executable_path[path_length] = '\0';
+		last_slash = strrchr(executable_path, '/');
+		if (last_slash == NULL) {
+			Com_Printf("LoadLibrary(\"%s\") failed: cannot locate executable directory\n", name);
+			return false;
+		}
+		last_slash[1] = '\0';
+		path_result = snprintf(fn, sizeof(fn), "%s%s", executable_path, name);
+		if (path_result < 0 || path_result >= (int)sizeof(fn) ||
+		    access(fn, R_OK) != 0) {
+			Com_Printf("LoadLibrary(\"%s\") failed: not found beside executable (%s)\n",
+			           name, fn);
+			return false;
+		}
+		Com_Printf("Configured renderer path unavailable; using %s\n", fn);
+	}
 
 	// permission checking
 	if (strstr(fn, "softx") == NULL) { // softx doesn't require root
@@ -492,4 +502,3 @@ void Do_Key_Event(int key, qboolean down)
 {
 	Key_Event(key, down, Sys_Milliseconds());
 }
-

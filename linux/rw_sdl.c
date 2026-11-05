@@ -12,11 +12,18 @@ void SWimp_InitPalette(void);              // Conserta o warning da paleta
 struct image_s *R_RegisterSkin(char *name); // r_image.c
 extern void CL_ApplyMouse(int mx, int my); // Nossa ponte com o cliente!
 
+extern viddef_t viddef;
+
+void KBD_Update(void);
+int MapKey(SDL_Keycode key);
+
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
 static SDL_Texture *texture = NULL;
+static int window_width;
+static int window_height;
 
-static uint32_t argb_buffer[1600 * 1200];
+static uint32_t *argb_buffer;
 static uint32_t current_palette[256];
 
 /* Buffers de entrada do mouse para a engine */
@@ -106,6 +113,13 @@ void KBD_Update(void)
             case SDL_QUIT:
                 //ri.Con_Printf(PRINT_ALL, "DEBUG: SDL_QUIT\n");
                 Cbuf_AddText("quit\n");
+                break;
+
+            case SDL_WINDOWEVENT:
+                if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
+                    window_width = event.window.data1;
+                    window_height = event.window.data2;
+                }
                 break;
 
             case SDL_MOUSEMOTION:
@@ -362,6 +376,7 @@ qboolean SWimp_InitGraphics(qboolean windowed)
     ri.Con_Printf(PRINT_ALL, "--> SWimp_InitGraphics EXECUTOU!\n");
     // 1. Limpeza rigorosa de recursos antigos (Prevenção de memory leak)
     if (vid.buffer) { free(vid.buffer); vid.buffer = NULL; }
+    if (argb_buffer) { free(argb_buffer); argb_buffer = NULL; }
     if (texture) { SDL_DestroyTexture(texture); texture = NULL; }
     if (renderer) { SDL_DestroyRenderer(renderer); renderer = NULL; }
     if (window) { SDL_DestroyWindow(window); window = NULL; }
@@ -382,6 +397,7 @@ qboolean SWimp_InitGraphics(qboolean windowed)
         ri.Con_Printf(PRINT_ALL, "Erro ao criar janela SDL: %s\n", SDL_GetError());
         return false; // Falha
     }
+    SDL_GetWindowSize(window, &window_width, &window_height);
 
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     if (!renderer) {
@@ -397,26 +413,25 @@ qboolean SWimp_InitGraphics(qboolean windowed)
         return false; // Falha
     }
 
-    // 3. Alocação vital de Memória para o Quake 2
+    // 3. Alocação de memória para o framebuffer e o buffer de apresentação.
     vid.rowbytes = vid.width;
     vid.buffer = malloc(vid.width * vid.height);
+    argb_buffer = malloc((size_t)vid.width * (size_t)vid.height * sizeof(*argb_buffer));
 
 
-    if (!vid.buffer) {
-        ri.Con_Printf(PRINT_ALL, "Erro fatal: Nao foi possivel alocar o vid.buffer!\n");
+    if (!vid.buffer || !argb_buffer) {
+        ri.Con_Printf(PRINT_ALL, "Erro fatal: Nao foi possivel alocar os buffers de video!\n");
         return false;
     }
 
     // Zera a memória de vídeo de forma segura
     // memset(vid.buffer, 0, vid.width * vid.height);
     memset(vid.buffer, 0xAA, vid.width * vid.height);
-    memset(argb_buffer, 0, vid.width * vid.height * sizeof(uint32_t));
+    memset(argb_buffer, 0, (size_t)vid.width * (size_t)vid.height * sizeof(*argb_buffer));
 
     SWimp_InitPalette();
 
     // Notifica a engine que o subsistema de vídeo foi inicializado com sucesso
-    ri.Cvar_Set("vid_ref", "softx");
-
     return true; // Sucesso!
 }
 
@@ -426,7 +441,7 @@ void SWimp_EndFrame(void)
     // 1. Mantém a janela respondendo ao SO (evita congelamento no Linux)
     RW_IN_Frame();
 
-    if (!renderer || !texture || !vid.buffer)
+    if (!renderer || !texture || !vid.buffer || !argb_buffer)
         return;
 
     int num_pixels = vid.width * vid.height;
@@ -448,72 +463,54 @@ void SWimp_EndFrame(void)
 
     // 3. Atualiza a textura no hardware e apresenta o frame
     SDL_UpdateTexture(texture, NULL, argb_buffer, vid.width * sizeof(uint32_t));
+    SDL_RenderSetViewport(renderer, NULL);
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderClear(renderer);
-    SDL_RenderCopy(renderer, texture, NULL, NULL);
+
+    if (window_width <= 0 || window_height <= 0 || vid.width <= 0 || vid.height <= 0) {
+        SDL_RenderPresent(renderer);
+        return;
+    }
+
+    SDL_Rect viewport = {0, 0, window_width, window_height};
+    if ((int64_t)window_width * vid.height > (int64_t)window_height * vid.width) {
+        viewport.w = window_height * vid.width / vid.height;
+        viewport.x = (window_width - viewport.w) / 2;
+    } else {
+        viewport.h = window_width * vid.height / vid.width;
+        viewport.y = (window_height - viewport.h) / 2;
+    }
+
+    SDL_RenderCopy(renderer, texture, NULL, &viewport);
     SDL_RenderPresent(renderer);
 }
 
-/* -------------------------------------------------------------------------- */
-/*  Estrutura de modos de vídeo padrão do Quake II                             */
-/* -------------------------------------------------------------------------- */
-typedef struct {
-    int width;
-    int height;
-} vmode_t;
 
-static vmode_t modelist[] = {
-    { 320, 240 },
-    { 400, 300 },
-    { 512, 384 },
-    { 640, 480 },
-    { 800, 600 },
-    { 960, 720 },
-    { 1024, 768 },
-    { 1152, 864 },
-    { 1280, 960 },
-    { 1600, 1200 },
-	// --- SUAS NOVAS RESOLUÇÕES AQUI ---
-    { 1280, 720 },  // 720p
-    { 1366, 768 },  // HD Notebook
-    { 1920, 1080 }  // 1080p Full HD
-};
 
-#define NUM_MODES (sizeof(modelist) / sizeof(modelist[0]))
 
 /* -------------------------------------------------------------------------- */
 /*  Definição e Troca do Modo de Vídeo (SWimp_SetMode)                        */
 /* -------------------------------------------------------------------------- */
-rserr_t SWimp_SetMode(int *pwidth, int *pheight, int mode, qboolean fullscreen)
+rserr_t SWimp_SetMode(
+    int *pwidth, int *pheight, int mode, qboolean fullscreen)
 {
-    if (mode < 0 || mode >= NUM_MODES) {
+    int width, height;
+
+    if (!ri.Vid_GetModeInfo(&width, &height, mode))
         return rserr_invalid_mode;
-    }
 
-    vid.width  = modelist[mode].width;
-    vid.height = modelist[mode].height;
-    vid.rowbytes = vid.width;
+    vid.width = width;
+    vid.height = height;
+    vid.rowbytes = width;
+    ri.Vid_NewWindow(width, height);
 
-    // tells the client the new size; the client's viddef_t is not the renderer's
-    ri.Vid_NewWindow (vid.width, vid.height);
+    if (pwidth)  *pwidth = width;
+    if (pheight) *pheight = height;
 
-    if (pwidth)  *pwidth  = vid.width;
-    if (pheight) *pheight = vid.height;
-
-    //ri.Con_Printf(PRINT_ALL, "DEBUG: SetMode -> %dx%d\n", vid.width, vid.height);
-
-    // 3. Inicializa os gráficos e aloca os buffers com a nova resolução
-    if (!SWimp_InitGraphics(!fullscreen)) {
-        ri.Con_Printf(PRINT_ALL, "DEBUG: SWimp_SetMode FALHOU no InitGraphics\n");
+    if (!SWimp_InitGraphics(!fullscreen))
         return rserr_invalid_mode;
-    }
-
-    if (!vid.buffer) {
-        ri.Con_Printf(PRINT_ALL, "DEBUG: SWimp_SetMode FALHOU (vid.buffer == NULL)\n");
-        return rserr_invalid_mode;
-    }
 
     R_GammaCorrectAndSetPalette((const unsigned char *)d_8to24table);
-
     return rserr_ok;
 }
 
