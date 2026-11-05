@@ -462,26 +462,52 @@ void WriteGame (char *filename, qboolean autosave)
 	FILE	*f;
 	int		i;
 	char	str[16];
+	char	tmpname[256];
+	unsigned int checksum = 0;
+	unsigned int stored;
+	unsigned char *p;
+	int		j;
 
 	if (!autosave)
 		SaveClientData ();
 
-	f = fopen (filename, "wb");
+	snprintf (tmpname, sizeof(tmpname), "%s.tmp", filename);
+
+	f = fopen (tmpname, "wb");
 	if (!f)
-		gi.error ("Couldn't open %s", filename);
+		gi.error ("Couldn't open %s", tmpname);
 
 	memset (str, 0, sizeof(str));
 	strcpy (str, __DATE__);
 	fwrite (str, sizeof(str), 1, f);
+	for (j = 0; j < (int)sizeof(str); j++)
+		checksum = checksum * 31 + (unsigned char)str[j];
 
 	game.autosaved = autosave;
 	fwrite (&game, sizeof(game), 1, f);
+	p = (unsigned char *)&game;
+	for (j = 0; j < (int)sizeof(game); j++)
+		checksum = checksum * 31 + p[j];
 	game.autosaved = false;
 
 	for (i=0 ; i<game.maxclients ; i++)
 		WriteClient (f, &game.clients[i]);
 
-	fclose (f);
+	stored = checksum;
+	fwrite (&stored, sizeof(stored), 1, f);
+
+	if (fclose (f) != 0)
+	{
+		remove (tmpname);
+		gi.error ("Couldn't write %s", tmpname);
+	}
+
+	remove (filename);
+	if (rename (tmpname, filename) != 0)
+	{
+		remove (tmpname);
+		gi.error ("Couldn't rename %s to %s", tmpname, filename);
+	}
 }
 
 void ReadGame (char *filename)
@@ -489,6 +515,10 @@ void ReadGame (char *filename)
 	FILE	*f;
 	int		i;
 	char	str[16];
+	unsigned int checksum = 0;
+	unsigned int stored = 0;
+	unsigned char *p;
+	int		j;
 
 	gi.FreeTags (TAG_GAME);
 
@@ -496,7 +526,14 @@ void ReadGame (char *filename)
 	if (!f)
 		gi.error ("Couldn't open %s", filename);
 
-	fread (str, sizeof(str), 1, f);
+	if (fread (str, sizeof(str), 1, f) != 1)
+	{
+		fclose (f);
+		gi.error ("Savegame %s is corrupted or unreadable.\n", filename);
+	}
+	for (j = 0; j < (int)sizeof(str); j++)
+		checksum = checksum * 31 + (unsigned char)str[j];
+
 	if (strcmp (str, __DATE__))
 	{
 		fclose (f);
@@ -506,10 +543,31 @@ void ReadGame (char *filename)
 	g_edicts =  gi.TagMalloc (game.maxentities * sizeof(g_edicts[0]), TAG_GAME);
 	globals.edicts = g_edicts;
 
-	fread (&game, sizeof(game), 1, f);
+	if (fread (&game, sizeof(game), 1, f) != 1)
+	{
+		fclose (f);
+		gi.error ("Savegame %s is corrupted (game data).\n", filename);
+	}
+	p = (unsigned char *)&game;
+	for (j = 0; j < (int)sizeof(game); j++)
+		checksum = checksum * 31 + p[j];
 	game.clients = gi.TagMalloc (game.maxclients * sizeof(game.clients[0]), TAG_GAME);
 	for (i=0 ; i<game.maxclients ; i++)
+	{
 		ReadClient (f, &game.clients[i]);
+	}
+
+	if (fread (&stored, sizeof(stored), 1, f) != 1)
+	{
+		fclose (f);
+		gi.error ("Savegame %s is missing integrity check.\n", filename);
+	}
+
+	if (stored != checksum)
+	{
+		fclose (f);
+		gi.error ("Savegame %s failed integrity check.\n", filename);
+	}
 
 	fclose (f);
 }
@@ -631,10 +689,13 @@ void WriteLevel (char *filename)
 	edict_t	*ent;
 	FILE	*f;
 	void	*base;
+	char	tmpname[256];
 
-	f = fopen (filename, "wb");
+	snprintf (tmpname, sizeof(tmpname), "%s.tmp", filename);
+
+	f = fopen (tmpname, "wb");
 	if (!f)
-		gi.error ("Couldn't open %s", filename);
+		gi.error ("Couldn't open %s", tmpname);
 
 	// write out edict size for checking
 	i = sizeof(edict_t);
@@ -659,7 +720,18 @@ void WriteLevel (char *filename)
 	i = -1;
 	fwrite (&i, sizeof(i), 1, f);
 
-	fclose (f);
+	if (fclose (f) != 0)
+	{
+		remove (tmpname);
+		gi.error ("Couldn't write %s", tmpname);
+	}
+
+	remove (filename);
+	if (rename (tmpname, filename) != 0)
+	{
+		remove (tmpname);
+		gi.error ("Couldn't rename %s to %s", tmpname, filename);
+	}
 }
 
 
