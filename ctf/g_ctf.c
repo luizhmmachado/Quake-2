@@ -2029,18 +2029,18 @@ qboolean CTFApplyStrengthSound(edict_t *ent)
 
 	if (!tech)
 		tech = FindItemByClassname("item_tech2");
-	if (tech && ent->client &&
-		ent->client->pers.inventory[ITEM_INDEX(tech)]) {
-		if (ent->client->ctf_techsndtime < level.time) {
-			ent->client->ctf_techsndtime = level.time + 1;
-			if (ent->client->quad_framenum > level.framenum)
-				gi.sound(ent, CHAN_VOICE, gi.soundindex("ctf/tech2x.wav"), volume, ATTN_NORM, 0);
-			else
-				gi.sound(ent, CHAN_VOICE, gi.soundindex("ctf/tech2.wav"), volume, ATTN_NORM, 0);
-		}
-		return true;
+	if (!tech || !ent->client ||
+		!ent->client->pers.inventory[ITEM_INDEX(tech)])
+		return false;
+
+	if (ent->client->ctf_techsndtime < level.time) {
+		ent->client->ctf_techsndtime = level.time + 1;
+		if (ent->client->quad_framenum > level.framenum)
+			gi.sound(ent, CHAN_VOICE, gi.soundindex("ctf/tech2x.wav"), volume, ATTN_NORM, 0);
+		else
+			gi.sound(ent, CHAN_VOICE, gi.soundindex("ctf/tech2.wav"), volume, ATTN_NORM, 0);
 	}
-	return false;
+	return true;
 }
 
 

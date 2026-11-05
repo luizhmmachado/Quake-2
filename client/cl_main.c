@@ -438,6 +438,18 @@ void CL_SendConnectPacket (void)
 		PROTOCOL_VERSION, port, cls.challenge, Cvar_Userinfo() );
 }
 
+static qboolean CL_LocalServerIsWaiting (void)
+{
+	return (cls.state == ca_disconnected && Com_ServerState() != 0);
+}
+
+static void CL_ConnectToLocalServer (void)
+{
+	cls.state = ca_connecting;
+	strncpy (cls.servername, "localhost", sizeof(cls.servername)-1);
+	CL_SendConnectPacket ();
+}
+
 /*
 =================
 CL_CheckForResend
@@ -451,12 +463,9 @@ void CL_CheckForResend (void)
 
 	// if the local server is running and we aren't
 	// then connect
-	if (cls.state == ca_disconnected && Com_ServerState() )
+	if (CL_LocalServerIsWaiting())
 	{
-		cls.state = ca_connecting;
-		strncpy (cls.servername, "localhost", sizeof(cls.servername)-1);
-		// we don't need a challenge on the localhost
-		CL_SendConnectPacket ();
+		CL_ConnectToLocalServer();
 		return;
 //		cls.connect_time = -99999;	// CL_CheckForResend() will fire immediately
 	}
