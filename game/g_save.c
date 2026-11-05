@@ -569,6 +569,12 @@ void ReadGame (char *filename)
 		gi.error ("Savegame %s failed integrity check.\n", filename);
 	}
 
+	if (fgetc (f) != EOF)
+	{
+		fclose (f);
+		gi.error ("Savegame %s has trailing or corrupted data.\n", filename);
+	}
+
 	fclose (f);
 }
 
