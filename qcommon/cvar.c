@@ -57,6 +57,118 @@ static cvar_t *Cvar_FindVar (char *var_name)
 
 /*
 ============
+Cvar_IsNumericString
+
+Returns true when the whole string can be parsed as a number.
+============
+*/
+static qboolean Cvar_IsNumericString (char *s)
+{
+	char	*end;
+
+	if (!s || !*s)
+		return false;
+
+	strtod (s, &end);
+	if (end == s)
+		return false;
+
+	while (*end == ' ' || *end == '\t' || *end == '\r' || *end == '\n')
+		end++;
+
+	return *end == 0;
+}
+
+/*
+============
+Cvar_ValueIsValid
+
+Numeric cvars are validated against their default type.  Info cvars keep
+their existing character restrictions as well.
+============
+*/
+static qboolean Cvar_ValueIsValid (cvar_t *var, char *value)
+{
+	if (!value)
+		return false;
+
+	if (var->flags & (CVAR_USERINFO | CVAR_SERVERINFO))
+	{
+		if (!Cvar_InfoValidate (value))
+			return false;
+	}
+
+	if (var->default_string && Cvar_IsNumericString (var->default_string))
+		return Cvar_IsNumericString (value);
+
+	return true;
+}
+
+/*
+============
+Cvar_ReportInvalid
+
+Prints a clear console message whenever a value is rejected.
+============
+*/
+static void Cvar_ReportInvalid (cvar_t *var, char *value)
+{
+	if (var->default_string)
+		Com_Printf ("WARNING: invalid value \"%s\" for \"%s\", using default \"%s\"\n",
+			value, var->name, var->default_string);
+	else
+		Com_Printf ("WARNING: invalid value \"%s\" for \"%s\", keeping \"%s\"\n",
+			value, var->name, var->string);
+}
+
+/*
+============
+Cvar_SetString
+
+Replaces a cvar value, keeping all derived fields in sync.
+============
+*/
+static void Cvar_SetString (cvar_t *var, char *value)
+{
+	Z_Free (var->string);
+	var->string = CopyString (value);
+	var->value = atof (var->string);
+	var->modified = true;
+
+	if (var->flags & CVAR_USERINFO)
+		userinfo_modified = true;
+}
+
+/*
+============
+Cvar_Create
+
+Low level cvar allocation.  default_value is only set by Cvar_Get when a
+cvar is actually registered by the engine/game code.
+============
+*/
+static cvar_t *Cvar_Create (char *var_name, char *var_value, int flags, char *default_value)
+{
+	cvar_t	*var;
+
+	var = Z_Malloc (sizeof(*var));
+	var->name = CopyString (var_name);
+	var->string = CopyString (var_value);
+	var->latched_string = NULL;
+	var->default_string = default_value ? CopyString (default_value) : NULL;
+	var->modified = true;
+	var->value = atof (var->string);
+	var->flags = flags;
+
+	// link the variable in
+	var->next = cvar_vars;
+	cvar_vars = var;
+
+	return var;
+}
+
+/*
+============
 Cvar_VariableValue
 ============
 */
@@ -141,6 +253,21 @@ cvar_t *Cvar_Get (char *var_name, char *var_value, int flags)
 	if (var)
 	{
 		var->flags |= flags;
+
+		// A cvar may have been created by a "set" command while config.cfg
+		// was being read, before the engine registered its real default.
+		// Register the default now and validate the value that was loaded.
+		if (var_value && !var->default_string)
+		{
+			var->default_string = CopyString (var_value);
+
+			if (!Cvar_ValueIsValid (var, var->string))
+			{
+				Cvar_ReportInvalid (var, var->string);
+				Cvar_SetString (var, var->default_string);
+			}
+		}
+
 		return var;
 	}
 
@@ -156,19 +283,7 @@ cvar_t *Cvar_Get (char *var_name, char *var_value, int flags)
 		}
 	}
 
-	var = Z_Malloc (sizeof(*var));
-	var->name = CopyString (var_name);
-	var->string = CopyString (var_value);
-	var->modified = true;
-	var->value = atof (var->string);
-
-	// link the variable in
-	var->next = cvar_vars;
-	cvar_vars = var;
-
-	var->flags = flags;
-
-	return var;
+	return Cvar_Create (var_name, var_value, flags, var_value);
 }
 
 /*
@@ -182,17 +297,16 @@ cvar_t *Cvar_Set2 (char *var_name, char *value, qboolean force)
 
 	var = Cvar_FindVar (var_name);
 	if (!var)
-	{	// create it
-		return Cvar_Get (var_name, value, 0);
+	{	// create it; only Cvar_Get sets a canonical default
+		return Cvar_Create (var_name, value, 0, NULL);
 	}
 
-	if (var->flags & (CVAR_USERINFO | CVAR_SERVERINFO))
+	if (!Cvar_ValueIsValid (var, value))
 	{
-		if (!Cvar_InfoValidate (value))
-		{
-			Com_Printf("invalid info cvar value\n");
+		Cvar_ReportInvalid (var, value);
+		if (!var->default_string)
 			return var;
-		}
+		value = var->default_string;
 	}
 
 	if (!force)
@@ -247,15 +361,7 @@ cvar_t *Cvar_Set2 (char *var_name, char *value, qboolean force)
 	if (!strcmp(value, var->string))
 		return var;		// not changed
 
-	var->modified = true;
-
-	if (var->flags & CVAR_USERINFO)
-		userinfo_modified = true;	// transmit at next oportunity
-	
-	Z_Free (var->string);	// free the old value string
-	
-	var->string = CopyString(value);
-	var->value = atof (var->string);
+	Cvar_SetString (var, value);
 
 	return var;
 }
@@ -295,15 +401,15 @@ cvar_t *Cvar_FullSet (char *var_name, char *value, int flags)
 		return Cvar_Get (var_name, value, flags);
 	}
 
-	var->modified = true;
+	if (!Cvar_ValueIsValid (var, value))
+	{
+		Cvar_ReportInvalid (var, value);
+		if (!var->default_string)
+			return var;
+		value = var->default_string;
+	}
 
-	if (var->flags & CVAR_USERINFO)
-		userinfo_modified = true;	// transmit at next oportunity
-	
-	Z_Free (var->string);	// free the old value string
-	
-	var->string = CopyString(value);
-	var->value = atof (var->string);
+	Cvar_SetString (var, value);
 	var->flags = flags;
 
 	return var;
@@ -420,28 +526,111 @@ void Cvar_Set_f (void)
 
 /*
 ============
+Cvar_IsArchived
+
+User parameters use CVAR_ARCHIVE.  Debug parameters are never persisted,
+even if they accidentally carry the archive flag.
+============
+*/
+static qboolean Cvar_IsArchived (cvar_t *var)
+{
+	if (var->flags & CVAR_DEBUG)
+		return false;
+
+	return (var->flags & CVAR_ARCHIVE) != 0;
+}
+
+static void Cvar_WriteArchivedVariables (FILE *f)
+{
+	cvar_t	*var;
+
+	for (var = cvar_vars ; var ; var = var->next)
+	{
+		if (Cvar_IsArchived (var))
+			fprintf (f, "set %s \"%s\"\n", var->name, var->string);
+	}
+}
+
+/*
+============
 Cvar_WriteVariables
 
-Appends lines containing "set variable value" for all variables
+Appends lines containing "set variable value" for all user variables
 with the archive flag set to true.
 ============
 */
 void Cvar_WriteVariables (char *path)
 {
-	cvar_t	*var;
-	char	buffer[1024];
 	FILE	*f;
 
 	f = fopen (path, "a");
-	for (var = cvar_vars ; var ; var = var->next)
+	if (!f)
 	{
-		if (var->flags & CVAR_ARCHIVE)
-		{
-			Com_sprintf (buffer, sizeof(buffer), "set %s \"%s\"\n", var->name, var->string);
-			fprintf (f, "%s", buffer);
-		}
+		Com_Printf ("Couldn't write %s.\n", path);
+		return;
 	}
+
+	Cvar_WriteArchivedVariables (f);
 	fclose (f);
+}
+
+/*
+============
+Cvar_WriteConfig
+
+Writes a complete config.cfg in one place: header, extra client data
+(key bindings), and all archived user cvars.  Debug cvars are skipped.
+============
+*/
+void Cvar_WriteConfig (char *path, Cvar_WriteExtra_f write_extra)
+{
+	FILE	*f;
+
+	f = fopen (path, "w");
+	if (!f)
+	{
+		Com_Printf ("Couldn't write %s.\n", path);
+		return;
+	}
+
+	fprintf (f, "// generated by quake, do not modify\n");
+	if (write_extra)
+		write_extra (f);
+	Cvar_WriteArchivedVariables (f);
+	fclose (f);
+}
+
+/*
+============
+Cvar_ExecConfig
+
+Centralized config/preset file loader used by the exec command and by
+startup.  Files are inserted into the command buffer in the order they
+are requested, so default.cfg can be applied before config.cfg.
+============
+*/
+void Cvar_ExecConfig (char *filename)
+{
+	char	*f, *f2;
+	int		len;
+
+	len = FS_LoadFile (filename, (void **)&f);
+	if (!f)
+	{
+		Com_Printf ("couldn't exec %s\n", filename);
+		return;
+	}
+	Com_Printf ("execing %s\n", filename);
+
+	// the file doesn't have a trailing 0, so we need to copy it off
+	f2 = Z_Malloc(len+1);
+	memcpy (f2, f, len);
+	f2[len] = 0;
+
+	Cbuf_InsertText (f2);
+
+	Z_Free (f2);
+	FS_FreeFile (f);
 }
 
 /*
@@ -474,6 +663,10 @@ void Cvar_List_f (void)
 			Com_Printf ("-");
 		else if (var->flags & CVAR_LATCH)
 			Com_Printf ("L");
+		else
+			Com_Printf (" ");
+		if (var->flags & CVAR_DEBUG)
+			Com_Printf ("D");
 		else
 			Com_Printf (" ");
 		Com_Printf (" %s \"%s\"\n", var->name, var->string);

@@ -370,32 +370,13 @@ Cmd_Exec_f
 */
 void Cmd_Exec_f (void)
 {
-	char	*f, *f2;
-	int		len;
-
 	if (Cmd_Argc () != 2)
 	{
 		Com_Printf ("exec <filename> : execute a script file\n");
 		return;
 	}
 
-	len = FS_LoadFile (Cmd_Argv(1), (void **)&f);
-	if (!f)
-	{
-		Com_Printf ("couldn't exec %s\n",Cmd_Argv(1));
-		return;
-	}
-	Com_Printf ("execing %s\n",Cmd_Argv(1));
-	
-	// the file doesn't have a trailing 0, so we need to copy it off
-	f2 = Z_Malloc(len+1);
-	memcpy (f2, f, len);
-	f2[len] = 0;
-
-	Cbuf_InsertText (f2);
-
-	Z_Free (f2);
-	FS_FreeFile (f);
+	Cvar_ExecConfig (Cmd_Argv(1));
 }
 
 

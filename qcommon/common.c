@@ -1425,6 +1425,8 @@ void Qcommon_Init (int argc, char **argv)
 
 	FS_InitFilesystem ();
 
+	// Presets have a fixed precedence: factory defaults first, then the
+	// user's saved config, and finally late command line overrides.
 	Cbuf_AddText ("exec default.cfg\n");
 	Cbuf_AddText ("exec config.cfg\n");
 
@@ -1437,13 +1439,13 @@ void Qcommon_Init (int argc, char **argv)
     Cmd_AddCommand ("z_stats", Z_Stats_f);
     Cmd_AddCommand ("error", Com_Error_f);
 
-	host_speeds = Cvar_Get ("host_speeds", "0", 0);
-	log_stats = Cvar_Get ("log_stats", "0", 0);
-	developer = Cvar_Get ("developer", "0", 0);
-	timescale = Cvar_Get ("timescale", "1", 0);
-	fixedtime = Cvar_Get ("fixedtime", "0", 0);
-	logfile_active = Cvar_Get ("logfile", "0", 0);
-	showtrace = Cvar_Get ("showtrace", "0", 0);
+	host_speeds = Cvar_Get ("host_speeds", "0", CVAR_DEBUG);
+	log_stats = Cvar_Get ("log_stats", "0", CVAR_DEBUG);
+	developer = Cvar_Get ("developer", "0", CVAR_DEBUG);
+	timescale = Cvar_Get ("timescale", "1", CVAR_DEBUG);
+	fixedtime = Cvar_Get ("fixedtime", "0", CVAR_DEBUG);
+	logfile_active = Cvar_Get ("logfile", "0", CVAR_DEBUG);
+	showtrace = Cvar_Get ("showtrace", "0", CVAR_DEBUG);
 #ifdef DEDICATED_ONLY
 	dedicated = Cvar_Get ("dedicated", "1", CVAR_NOSET);
 #else
