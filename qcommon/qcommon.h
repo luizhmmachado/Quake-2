@@ -498,9 +498,18 @@ qboolean Cvar_Command (void);
 // command.  Returns true if the command was a variable reference that
 // was handled. (print or change)
 
+typedef void (*Cvar_WriteExtra_f)(FILE *f);
+
 void 	Cvar_WriteVariables (char *path);
-// appends lines containing "set variable value" for all variables
-// with the archive flag set to true.
+// appends lines containing "set variable value" for all user variables
+// with the archive flag set to true. Debug cvars are never written.
+
+void	Cvar_WriteConfig (char *path, Cvar_WriteExtra_f write_extra);
+// writes a complete config.cfg: header, optional extra data (bindings),
+// and all archived user cvars. Debug cvars are never written.
+
+void	Cvar_ExecConfig (char *filename);
+// centralized config/preset loader used by exec and by startup.
 
 void	Cvar_Init (void);
 
