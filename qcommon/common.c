@@ -1425,6 +1425,8 @@ void Qcommon_Init (int argc, char **argv)
 
 	FS_InitFilesystem ();
 
+	// Presets have a fixed precedence: factory defaults first, then the
+	// user's saved config, and finally late command line overrides.
 	Cbuf_AddText ("exec default.cfg\n");
 	Cbuf_AddText ("exec config.cfg\n");
 
