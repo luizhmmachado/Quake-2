@@ -665,6 +665,10 @@ void Cvar_List_f (void)
 			Com_Printf ("L");
 		else
 			Com_Printf (" ");
+		if (var->flags & CVAR_DEBUG)
+			Com_Printf ("D");
+		else
+			Com_Printf (" ");
 		Com_Printf (" %s \"%s\"\n", var->name, var->string);
 	}
 	Com_Printf ("%i cvars\n", i);
