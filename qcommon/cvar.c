@@ -57,6 +57,118 @@ static cvar_t *Cvar_FindVar (char *var_name)
 
 /*
 ============
+Cvar_IsNumericString
+
+Returns true when the whole string can be parsed as a number.
+============
+*/
+static qboolean Cvar_IsNumericString (char *s)
+{
+	char	*end;
+
+	if (!s || !*s)
+		return false;
+
+	strtod (s, &end);
+	if (end == s)
+		return false;
+
+	while (*end == ' ' || *end == '\t' || *end == '\r' || *end == '\n')
+		end++;
+
+	return *end == 0;
+}
+
+/*
+============
+Cvar_ValueIsValid
+
+Numeric cvars are validated against their default type.  Info cvars keep
+their existing character restrictions as well.
+============
+*/
+static qboolean Cvar_ValueIsValid (cvar_t *var, char *value)
+{
+	if (!value)
+		return false;
+
+	if (var->flags & (CVAR_USERINFO | CVAR_SERVERINFO))
+	{
+		if (!Cvar_InfoValidate (value))
+			return false;
+	}
+
+	if (var->default_string && Cvar_IsNumericString (var->default_string))
+		return Cvar_IsNumericString (value);
+
+	return true;
+}
+
+/*
+============
+Cvar_ReportInvalid
+
+Prints a clear console message whenever a value is rejected.
+============
+*/
+static void Cvar_ReportInvalid (cvar_t *var, char *value)
+{
+	if (var->default_string)
+		Com_Printf ("WARNING: invalid value \"%s\" for \"%s\", using default \"%s\"\n",
+			value, var->name, var->default_string);
+	else
+		Com_Printf ("WARNING: invalid value \"%s\" for \"%s\", keeping \"%s\"\n",
+			value, var->name, var->string);
+}
+
+/*
+============
+Cvar_SetString
+
+Replaces a cvar value, keeping all derived fields in sync.
+============
+*/
+static void Cvar_SetString (cvar_t *var, char *value)
+{
+	Z_Free (var->string);
+	var->string = CopyString (value);
+	var->value = atof (var->string);
+	var->modified = true;
+
+	if (var->flags & CVAR_USERINFO)
+		userinfo_modified = true;
+}
+
+/*
+============
+Cvar_Create
+
+Low level cvar allocation.  default_value is only set by Cvar_Get when a
+cvar is actually registered by the engine/game code.
+============
+*/
+static cvar_t *Cvar_Create (char *var_name, char *var_value, int flags, char *default_value)
+{
+	cvar_t	*var;
+
+	var = Z_Malloc (sizeof(*var));
+	var->name = CopyString (var_name);
+	var->string = CopyString (var_value);
+	var->latched_string = NULL;
+	var->default_string = default_value ? CopyString (default_value) : NULL;
+	var->modified = true;
+	var->value = atof (var->string);
+	var->flags = flags;
+
+	// link the variable in
+	var->next = cvar_vars;
+	cvar_vars = var;
+
+	return var;
+}
+
+/*
+============
 Cvar_VariableValue
 ============
 */
@@ -141,6 +253,21 @@ cvar_t *Cvar_Get (char *var_name, char *var_value, int flags)
 	if (var)
 	{
 		var->flags |= flags;
+
+		// A cvar may have been created by a "set" command while config.cfg
+		// was being read, before the engine registered its real default.
+		// Register the default now and validate the value that was loaded.
+		if (var_value && !var->default_string)
+		{
+			var->default_string = CopyString (var_value);
+
+			if (!Cvar_ValueIsValid (var, var->string))
+			{
+				Cvar_ReportInvalid (var, var->string);
+				Cvar_SetString (var, var->default_string);
+			}
+		}
+
 		return var;
 	}
 
@@ -156,19 +283,7 @@ cvar_t *Cvar_Get (char *var_name, char *var_value, int flags)
 		}
 	}
 
-	var = Z_Malloc (sizeof(*var));
-	var->name = CopyString (var_name);
-	var->string = CopyString (var_value);
-	var->modified = true;
-	var->value = atof (var->string);
-
-	// link the variable in
-	var->next = cvar_vars;
-	cvar_vars = var;
-
-	var->flags = flags;
-
-	return var;
+	return Cvar_Create (var_name, var_value, flags, var_value);
 }
 
 /*
@@ -182,17 +297,16 @@ cvar_t *Cvar_Set2 (char *var_name, char *value, qboolean force)
 
 	var = Cvar_FindVar (var_name);
 	if (!var)
-	{	// create it
-		return Cvar_Get (var_name, value, 0);
+	{	// create it; only Cvar_Get sets a canonical default
+		return Cvar_Create (var_name, value, 0, NULL);
 	}
 
-	if (var->flags & (CVAR_USERINFO | CVAR_SERVERINFO))
+	if (!Cvar_ValueIsValid (var, value))
 	{
-		if (!Cvar_InfoValidate (value))
-		{
-			Com_Printf("invalid info cvar value\n");
+		Cvar_ReportInvalid (var, value);
+		if (!var->default_string)
 			return var;
-		}
+		value = var->default_string;
 	}
 
 	if (!force)
@@ -247,15 +361,7 @@ cvar_t *Cvar_Set2 (char *var_name, char *value, qboolean force)
 	if (!strcmp(value, var->string))
 		return var;		// not changed
 
-	var->modified = true;
-
-	if (var->flags & CVAR_USERINFO)
-		userinfo_modified = true;	// transmit at next oportunity
-	
-	Z_Free (var->string);	// free the old value string
-	
-	var->string = CopyString(value);
-	var->value = atof (var->string);
+	Cvar_SetString (var, value);
 
 	return var;
 }
@@ -295,15 +401,15 @@ cvar_t *Cvar_FullSet (char *var_name, char *value, int flags)
 		return Cvar_Get (var_name, value, flags);
 	}
 
-	var->modified = true;
+	if (!Cvar_ValueIsValid (var, value))
+	{
+		Cvar_ReportInvalid (var, value);
+		if (!var->default_string)
+			return var;
+		value = var->default_string;
+	}
 
-	if (var->flags & CVAR_USERINFO)
-		userinfo_modified = true;	// transmit at next oportunity
-	
-	Z_Free (var->string);	// free the old value string
-	
-	var->string = CopyString(value);
-	var->value = atof (var->string);
+	Cvar_SetString (var, value);
 	var->flags = flags;
 
 	return var;
