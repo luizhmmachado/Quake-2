@@ -305,12 +305,13 @@ CVARS (console variables)
 #ifndef CVAR
 #define	CVAR
 
-#define	CVAR_ARCHIVE	1	// set to cause it to be saved to vars.rc
+#define	CVAR_ARCHIVE	1	// user preference, saved to config.cfg
 #define	CVAR_USERINFO	2	// added to userinfo  when changed
 #define	CVAR_SERVERINFO	4	// added to serverinfo when changed
 #define	CVAR_NOSET		8	// don't allow change from console at all,
 							// but can be set from the command line
 #define	CVAR_LATCH		16	// save changes until server restart
+#define	CVAR_DEBUG		32	// debug-only cvar, never saved to config.cfg
 
 // nothing outside the Cvar_*() functions should modify these fields!
 typedef struct cvar_s
@@ -322,6 +323,7 @@ typedef struct cvar_s
 	qboolean	modified;	// set each time the cvar is changed
 	float		value;
 	struct cvar_s *next;
+	char		*default_string;	// canonical default for validation/fallback
 } cvar_t;
 
 #endif		// CVAR
